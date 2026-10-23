@@ -1,0 +1,387 @@
+{
+  "$defs": {
+    "Approval": {
+      "properties": {
+        "decision": {
+          "enum": [
+            "approved",
+            "rejected",
+            "not_requested"
+          ],
+          "title": "Decision",
+          "type": "string"
+        },
+        "by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "By"
+        },
+        "at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        }
+      },
+      "required": [
+        "decision"
+      ],
+      "title": "Approval",
+      "type": "object"
+    },
+    "Diagnosis": {
+      "description": "What the model returns at the end of an investigation.",
+      "properties": {
+        "component": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Failing service or container, or null if unknown",
+          "title": "Component"
+        },
+        "category": {
+          "default": "unknown",
+          "description": "Code/behaviour fault inside a service, or a container/resource/dependency fault",
+          "enum": [
+            "application",
+            "infrastructure",
+            "unknown"
+          ],
+          "title": "Category",
+          "type": "string"
+        },
+        "cause": {
+          "description": "Most likely root cause in one or two sentences",
+          "title": "Cause",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "evidence": {
+          "description": "Evidence IDs from tool calls, e.g. ev-003",
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "escalate": {
+          "description": "True when not confident enough to act",
+          "title": "Escalate",
+          "type": "boolean"
+        },
+        "next_steps": {
+          "description": "What a human should check next",
+          "items": {
+            "type": "string"
+          },
+          "title": "Next Steps",
+          "type": "array"
+        }
+      },
+      "required": [
+        "component",
+        "cause",
+        "confidence",
+        "escalate"
+      ],
+      "title": "Diagnosis",
+      "type": "object"
+    },
+    "EvidenceItem": {
+      "properties": {
+        "id": {
+          "description": "Evidence ID, e.g. ev-003",
+          "title": "Id",
+          "type": "string"
+        },
+        "tool": {
+          "description": "Tool that produced it",
+          "title": "Tool",
+          "type": "string"
+        },
+        "args": {
+          "additionalProperties": true,
+          "title": "Args",
+          "type": "object"
+        },
+        "summary": {
+          "description": "Short excerpt of the tool result the diagnosis relies on",
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "tool",
+        "summary"
+      ],
+      "title": "EvidenceItem",
+      "type": "object"
+    },
+    "Execution": {
+      "properties": {
+        "executed": {
+          "title": "Executed",
+          "type": "boolean"
+        },
+        "dry_run": {
+          "title": "Dry Run",
+          "type": "boolean"
+        },
+        "action_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ID in the Action API call log",
+          "title": "Action Id"
+        },
+        "result": {
+          "default": "",
+          "title": "Result",
+          "type": "string"
+        },
+        "at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        }
+      },
+      "required": [
+        "executed",
+        "dry_run"
+      ],
+      "title": "Execution",
+      "type": "object"
+    },
+    "ProposedAction": {
+      "properties": {
+        "action": {
+          "enum": [
+            "restart_service",
+            "toggle_feature_flag",
+            "throttle_load_generator",
+            "scale_service"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "target": {
+          "description": "Service, container or flag the action applies to",
+          "title": "Target",
+          "type": "string"
+        },
+        "params": {
+          "additionalProperties": true,
+          "title": "Params",
+          "type": "object"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "target",
+        "reason"
+      ],
+      "title": "ProposedAction",
+      "type": "object"
+    },
+    "TimelineEntry": {
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        },
+        "event": {
+          "title": "Event",
+          "type": "string"
+        }
+      },
+      "required": [
+        "at",
+        "event"
+      ],
+      "title": "TimelineEntry",
+      "type": "object"
+    },
+    "Verification": {
+      "properties": {
+        "recovered": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Null when no action was executed",
+          "title": "Recovered"
+        },
+        "checks": {
+          "description": "Health checks run after the action",
+          "items": {
+            "type": "string"
+          },
+          "title": "Checks",
+          "type": "array"
+        },
+        "rolled_back": {
+          "default": false,
+          "title": "Rolled Back",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "recovered"
+      ],
+      "title": "Verification",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "incident_id": {
+      "title": "Incident Id",
+      "type": "string"
+    },
+    "alert": {
+      "description": "What triggered the investigation",
+      "title": "Alert",
+      "type": "string"
+    },
+    "detected_at": {
+      "format": "date-time",
+      "title": "Detected At",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "diagnosed",
+        "escalated",
+        "rejected",
+        "dry_run",
+        "resolved",
+        "failed"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "diagnosis": {
+      "$ref": "#/$defs/Diagnosis"
+    },
+    "evidence": {
+      "description": "Only the evidence the diagnosis cites",
+      "items": {
+        "$ref": "#/$defs/EvidenceItem"
+      },
+      "title": "Evidence",
+      "type": "array"
+    },
+    "proposed_action": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ProposedAction"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "approval": {
+      "$ref": "#/$defs/Approval"
+    },
+    "execution": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Execution"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "verification": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Verification"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "timeline": {
+      "items": {
+        "$ref": "#/$defs/TimelineEntry"
+      },
+      "title": "Timeline",
+      "type": "array"
+    },
+    "prevention": {
+      "description": "Changes that would stop a repeat",
+      "items": {
+        "type": "string"
+      },
+      "title": "Prevention",
+      "type": "array"
+    }
+  },
+  "required": [
+    "incident_id",
+    "alert",
+    "detected_at",
+    "status",
+    "diagnosis"
+  ],
+  "title": "IncidentReport",
+  "type": "object"
+}

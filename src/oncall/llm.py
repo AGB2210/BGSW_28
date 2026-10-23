@@ -16,8 +16,13 @@ def chat(messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = No
         "messages": messages,
         "stream": False,
         "think": s.ollama_think,
-        "options": {"temperature": 0, "num_ctx": s.ollama_num_ctx},
+        "options": {
+            "temperature": 0,
+            "num_ctx": s.ollama_num_ctx,
+            "num_gpu": s.ollama_num_gpu,  # layers on the GPU; 99 = all of them
+            "num_thread": s.ollama_num_thread,  # CPU threads, kept low so the demo isn't starved
+        },
     }
     if tools:
         body["tools"] = tools
-    return post_json(f"{s.ollama_url}/api/chat", body)["message"]
+    return post_json(f"{s.ollama_url}/api/chat", body, timeout=300)["message"]

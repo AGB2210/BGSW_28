@@ -45,6 +45,21 @@ def cmd_investigate(args: argparse.Namespace) -> int:
     return 0
 
 
+SCHEMA_PATH = "schemas/incident_report.schema.json"
+
+
+def cmd_schema(_: argparse.Namespace) -> int:
+    """Write the JSON schema of the incident report."""
+    from pathlib import Path
+
+    from oncall.schema import IncidentReport
+
+    Path(SCHEMA_PATH).parent.mkdir(exist_ok=True)
+    Path(SCHEMA_PATH).write_text(json.dumps(IncidentReport.model_json_schema(), indent=2) + "\n")
+    print(f"wrote {SCHEMA_PATH}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="oncall", description="AI on-call engineer")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -55,6 +70,8 @@ def main(argv: list[str] | None = None) -> int:
     inv.add_argument("alert", help='e.g. "checkout error rate above 5%"')
     inv.add_argument("--show-evidence", action="store_true", help="print the evidence ledger")
     inv.set_defaults(fn=cmd_investigate)
+
+    sub.add_parser("schema", help=f"write {SCHEMA_PATH}").set_defaults(fn=cmd_schema)
 
     args = parser.parse_args(argv)
     return args.fn(args)

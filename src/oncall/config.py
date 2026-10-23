@@ -47,6 +47,8 @@ class Settings:
     ollama_model: str
     ollama_num_ctx: int
     ollama_think: bool
+    ollama_num_gpu: int
+    ollama_num_thread: int
     max_steps: int
     min_confidence: float
     dry_run: bool
@@ -68,6 +70,8 @@ def get_settings() -> Settings:
         ollama_model=_env("OLLAMA_MODEL", "qwen3:4b"),
         ollama_num_ctx=int(_env("OLLAMA_NUM_CTX", "8192")),
         ollama_think=_env("OLLAMA_THINK", "false").lower() == "true",
+        ollama_num_gpu=int(_env("OLLAMA_NUM_GPU", "99")),
+        ollama_num_thread=int(_env("OLLAMA_NUM_THREAD", "4")),
         max_steps=int(_env("MAX_STEPS", "12")),
         min_confidence=float(_env("MIN_CONFIDENCE", "0.6")),
         dry_run=_env("DRY_RUN", "true").lower() != "false",
