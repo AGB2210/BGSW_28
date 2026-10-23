@@ -39,6 +39,16 @@ def test_corroborated_diagnosis_is_accepted():
     assert d.escalate is False and d.confidence == 0.9
 
 
+def test_uncited_supporting_evidence_counts_and_is_cited():
+    ledger = Ledger()
+    ledger.add("search_traces", {}, {"origin": "valkey-cart did not answer"})
+    ledger.add("container_health", {}, {"name": "valkey-cart", "state": "exited"})
+    reply = ('{"component": "valkey-cart", "cause": "x", "confidence": 0.9, '
+             '"evidence": ["ev-002"], "escalate": false}')
+    d = _finalise(reply, ledger, 0.6)
+    assert d.escalate is False and sorted(d.evidence) == ["ev-001", "ev-002"]
+
+
 def test_low_confidence_escalates():
     ledger = Ledger()
     ledger.add("service_overview", {}, {})

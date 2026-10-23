@@ -54,8 +54,14 @@ def _escalation(reason: str) -> Diagnosis:
 
 
 def investigate(alert: str, ledger: Ledger | None = None, verbose: bool = False) -> tuple[Diagnosis, Ledger]:
+    try:
+        return _investigate(alert, ledger or Ledger(), verbose)
+    finally:
+        llm.unload()
+
+
+def _investigate(alert: str, ledger: Ledger, verbose: bool) -> tuple[Diagnosis, Ledger]:
     settings = get_settings()
-    ledger = ledger or Ledger()
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": f"Alert: {alert}"},
@@ -97,12 +103,19 @@ def _checklist_gap(ledger: Ledger) -> str | None:
 
 
 def _corroboration_problem(diagnosis: Diagnosis, ledger: Ledger) -> str | None:
-    """Evidence must come from 2+ different tools and mention the blamed component."""
-    cited = [e for e in (ledger.get(i) for i in diagnosis.evidence) if e]
-    if len({e.tool for e in cited}) < 2:
-        return "evidence comes from fewer than two different tools"
-    if diagnosis.component and not any(diagnosis.component in json.dumps(e.summary, default=str) for e in cited):
-        return f"none of the cited evidence mentions {diagnosis.component}"
+    """The blamed component must appear in evidence from 2+ different tools.
+
+    Supporting evidence the model gathered but forgot to cite is added to its citations.
+    """
+    if not diagnosis.component:
+        return "no component named"
+    supporting = [e for e in ledger.items() if diagnosis.component in json.dumps(e.summary, default=str)]
+    tools_seen = {e.tool for e in supporting}
+    if len(tools_seen) < 2:
+        return f"{diagnosis.component} appears in evidence from {len(tools_seen)} tool(s); need 2"
+    for e in supporting:
+        if e.id not in diagnosis.evidence:
+            diagnosis.evidence.append(e.id)
     return None
 
 

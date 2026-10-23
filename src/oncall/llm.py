@@ -34,4 +34,14 @@ def chat(
         body["tools"] = tools
     if schema:
         body["format"] = schema
+    body["keep_alive"] = "2m"  # unload soon after the last call even if unload() is never reached
     return post_json(f"{s.ollama_url}/api/chat", body, timeout=300)["message"]
+
+
+def unload() -> None:
+    """Free the model's memory. Its prompt cache grows to several GB, which starves the demo."""
+    s = get_settings()
+    try:
+        post_json(f"{s.ollama_url}/api/generate", {"model": s.ollama_model, "keep_alive": 0}, timeout=30)
+    except Exception:
+        pass  # best effort: keep_alive above unloads it anyway

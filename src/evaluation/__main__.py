@@ -57,6 +57,7 @@ def run_one(incident_id: str, detect_timeout: int, settle_timeout: int) -> dict:
     result = {
         "incident": incident_id,
         "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "baseline_calm": bool(calm),
         "detected_after_s": detected_s,
         "alert": alert,
         "diagnosis": diagnosis.model_dump(),
@@ -73,7 +74,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="evaluation")
     parser.add_argument("incidents", nargs="*", help="default: all practice incidents")
     parser.add_argument("--detect-timeout", type=int, default=240)
-    parser.add_argument("--settle-timeout", type=int, default=240)
+    parser.add_argument("--settle-timeout", type=int, default=420)
     args = parser.parse_args(argv)
 
     chosen = args.incidents or list(EXPECTED)
@@ -91,10 +92,12 @@ def main(argv: list[str] | None = None) -> int:
         with out.open("a") as f:
             f.write(json.dumps(result) + "\n")
 
-    print("\n| incident | detected | diagnosis | conf | result |\n|---|---|---|---|---|")
+    print("\n| incident | calm start | detected | diagnosis | conf | result |\n|---|---|---|---|---|---|")
     for r in results:
         d = r["diagnosis"]
-        print(f"| {r['incident']} | {r['detected_after_s'] or 'no'}s | {d['component']} | {d['confidence']} | {r['score']} |")
+        detected = f"{r['detected_after_s']}s" if r["detected_after_s"] is not None else "no"
+        print(f"| {r['incident']} | {'yes' if r['baseline_calm'] else 'NO'} | {detected} | "
+              f"{d['component']} | {d['confidence']} | {r['score']} |")
     totals = {s: sum(r["score"] == s for r in results) for s in ("correct", "escalated", "wrong")}
     print(f"\n{totals}  (saved to {out})")
     return 0
