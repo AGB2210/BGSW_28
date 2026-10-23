@@ -30,6 +30,11 @@ def _by_service(query: str) -> dict[str, float]:
     },
 )
 def service_overview(window: str = "5m") -> list[dict[str, Any]]:
+    return service_rows(window)[:12]
+
+
+def service_rows(window: str = "5m") -> list[dict[str, Any]]:
+    """All services with traffic, worst first."""
     calls = "traces_span_metrics_calls_total"
     rps = _by_service(f"sum by (service_name) (rate({calls}[{window}]))")
     errors = _by_service(f'sum by (service_name) (rate({calls}{{status_code="STATUS_CODE_ERROR"}}[{window}]))')
@@ -47,4 +52,4 @@ def service_overview(window: str = "5m") -> list[dict[str, Any]]:
         for svc, rate in rps.items()
         if rate > 0 and svc not in HIDDEN_SERVICES
     ]
-    return sorted(rows, key=lambda r: (-r["error_pct"], -(r["p95_ms"] or 0)))[:12]
+    return sorted(rows, key=lambda r: (-r["error_pct"], -(r["p95_ms"] or 0)))

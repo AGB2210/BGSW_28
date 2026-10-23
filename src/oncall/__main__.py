@@ -45,6 +45,24 @@ def cmd_investigate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_baseline(_: argparse.Namespace) -> int:
+    """Save current metrics as the healthy baseline (run when nothing is injected)."""
+    from oncall import detector
+
+    data = detector.save_baseline()
+    print(f"saved baseline for {len(data)} services to {detector.BASELINE_FILE}")
+    return 0
+
+
+def cmd_detect(_: argparse.Namespace) -> int:
+    """One detector check against the baseline."""
+    from oncall import detector
+
+    alert = detector.check()
+    print(f"ALERT: {alert}" if alert else "no anomalies")
+    return 0
+
+
 SCHEMA_PATH = "schemas/incident_report.schema.json"
 
 
@@ -72,6 +90,8 @@ def main(argv: list[str] | None = None) -> int:
     inv.set_defaults(fn=cmd_investigate)
 
     sub.add_parser("schema", help=f"write {SCHEMA_PATH}").set_defaults(fn=cmd_schema)
+    sub.add_parser("baseline", help="save current metrics as the healthy baseline").set_defaults(fn=cmd_baseline)
+    sub.add_parser("detect", help="check live metrics against the baseline").set_defaults(fn=cmd_detect)
 
     args = parser.parse_args(argv)
     return args.fn(args)

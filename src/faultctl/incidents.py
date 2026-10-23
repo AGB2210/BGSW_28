@@ -39,7 +39,6 @@ CATALOGUE = {i.id: i for i in [
     Incident("ad-high-cpu", "application", "Ad service burns CPU", flag=("adHighCpu", "on")),
     Incident("ad-gc", "application", "Ad service runs constant full garbage collections", flag=("adManualGc", "on")),
     Incident("homepage-flood", "application", "Traffic flood on the homepage", flag=("loadGeneratorFloodHomepage", "on")),
-    Incident("kafka-lag", "application", "Order consumer falls behind on Kafka", flag=("kafkaQueueProblems", "3sec")),
     Incident("image-slow", "application", "Product images load slowly", flag=("imageSlowLoad", "5sec")),
     # Infrastructure faults
     Incident("service-down", "infrastructure", "A service container is stopped", stop="", default_target="checkout"),
