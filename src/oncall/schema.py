@@ -74,7 +74,7 @@ class IncidentReport(BaseModel):
     incident_id: str
     alert: str = Field(description="What triggered the investigation")
     detected_at: datetime
-    status: Literal["diagnosed", "escalated", "rejected", "dry_run", "resolved", "failed"]
+    status: Literal["diagnosed", "escalated", "rejected", "dry_run", "resolved", "failed", "cancelled"]
     diagnosis: Diagnosis
     evidence: list[EvidenceItem] = Field(default_factory=list, description="Only the evidence the diagnosis cites")
     proposed_action: ProposedAction | None = None

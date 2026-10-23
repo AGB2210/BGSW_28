@@ -53,17 +53,31 @@ def _escalation(reason: str) -> Diagnosis:
                      next_steps=["Review the evidence ledger manually"])
 
 
+class Cancelled(Exception):
+    """The operator stopped the investigation."""
+
+
 def investigate(alert: str, ledger: Ledger | None = None, verbose: bool = False,
-                on_event: Callable[[str, dict], None] | None = None) -> tuple[Diagnosis, Ledger]:
-    """Investigate an alert. `on_event(kind, data)` receives each tool call as it happens."""
+                on_event: Callable[[str, dict], None] | None = None,
+                should_stop: Callable[[], bool] | None = None) -> tuple[Diagnosis, Ledger]:
+    """Investigate an alert. `on_event(kind, data)` receives each tool call as it happens.
+
+    `should_stop()` is checked before every model and tool call; when it returns True
+    the investigation raises Cancelled.
+    """
     try:
-        return _investigate(alert, ledger or Ledger(), verbose, on_event or (lambda kind, data: None))
+        return _investigate(alert, ledger or Ledger(), verbose, on_event or (lambda kind, data: None),
+                            should_stop or (lambda: False))
     finally:
         llm.unload()
 
 
-def _investigate(alert: str, ledger: Ledger, verbose: bool,
-                 on_event: Callable[[str, dict], None]) -> tuple[Diagnosis, Ledger]:
+def _investigate(alert: str, ledger: Ledger, verbose: bool, on_event: Callable[[str, dict], None],
+                 should_stop: Callable[[], bool]) -> tuple[Diagnosis, Ledger]:
+    def checkpoint() -> None:
+        if should_stop():
+            raise Cancelled("investigation cancelled by the operator")
+
     settings = get_settings()
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -72,6 +86,7 @@ def _investigate(alert: str, ledger: Ledger, verbose: bool,
 
     nudged = False
     for _ in range(settings.max_steps):
+        checkpoint()
         reply = llm.chat(messages, tools.specs())
         messages.append(reply)
         calls = reply.get("tool_calls") or []
@@ -83,6 +98,7 @@ def _investigate(alert: str, ledger: Ledger, verbose: bool,
                 continue
             break
         for call in calls:
+            checkpoint()
             fn = call["function"]
             output = tools.call(fn["name"], fn.get("arguments") or {}, ledger)
             on_event("tool", {"tool": fn["name"], "args": fn.get("arguments") or {},
@@ -94,6 +110,7 @@ def _investigate(alert: str, ledger: Ledger, verbose: bool,
         messages.append({"role": "user", "content": f"Step limit ({settings.max_steps}) reached."})
 
     # Final answer with the output format enforced, so it always parses.
+    checkpoint()
     messages.append({"role": "user", "content": FINAL_PROMPT})
     final = llm.chat(messages, schema=Diagnosis.model_json_schema())
     return _finalise(final.get("content", ""), ledger, settings.min_confidence), ledger

@@ -7,6 +7,7 @@
     GET  /api/actions       Action API call log
     GET  /reports/<file>    incident reports (.md / .json)
     POST /api/respond       {alert?}         start an investigation (empty: use the detector)
+    POST /api/cancel                         stop the running investigation after its current step
     POST /api/approve       {approved, name} answer the pending approval
     POST /api/settings      {dry_run?, auto_detect?, kill_switch?}
     POST /api/fault         {incident?, reset?}  inject or reset a practice incident (demo)
@@ -64,6 +65,7 @@ class Console:
         self.dry_run = get_settings().dry_run
         self.auto_detect = False
         self.busy = threading.Lock()
+        self.cancel_requested = threading.Event()
         self.pending: dict[str, Any] | None = None  # {"event": Event, "approved": bool, "name": str}
 
     # --- approval gate -------------------------------------------------
@@ -72,11 +74,21 @@ class Console:
         self.pending = gate
         self.hub.publish("awaiting_approval", {"incident_id": report.incident_id, "proposal": proposal.model_dump(),
                                                "dry_run": self.dry_run})
-        answered = gate["event"].wait(timeout=600)
+        deadline = time.time() + 600
+        while not gate["event"].wait(timeout=1):  # wake every second so Cancel works here too
+            if self.cancel_requested.is_set() or time.time() > deadline:
+                break
         self.pending = None
-        if not answered:
-            return False, "timeout"
+        if not gate["event"].is_set():
+            return False, "cancelled" if self.cancel_requested.is_set() else "timeout"
         return gate["approved"], gate["name"] or "operator"
+
+    def cancel(self) -> str:
+        if not self.busy.locked():
+            return "nothing is running"
+        self.cancel_requested.set()
+        self.hub.publish("cancelling", {"event": "Cancel requested; stopping after the current step"})
+        return "cancelling"
 
     def answer(self, approved: bool, name: str) -> bool:
         gate = self.pending
@@ -95,9 +107,12 @@ class Console:
             self.busy.release()
             return "no anomaly against the baseline; nothing to investigate"
 
+        self.cancel_requested.clear()
+
         def run() -> None:
             try:
-                respond(alert, self.approver, self.hub.publish, dry_run=self.dry_run)
+                respond(alert, self.approver, self.hub.publish, dry_run=self.dry_run,
+                        should_stop=self.cancel_requested.is_set)
             except Exception as exc:  # surface failures in the UI instead of a silent thread death
                 self.hub.publish("error", {"event": f"{type(exc).__name__}: {exc}"})
             finally:
@@ -189,6 +204,8 @@ class Handler(BaseHTTPRequestHandler):
         body = self._body()
         if self.path == "/api/respond":
             self._json({"result": CONSOLE.start((body.get("alert") or "").strip() or None)})
+        elif self.path == "/api/cancel":
+            self._json({"result": CONSOLE.cancel()})
         elif self.path == "/api/approve":
             ok = CONSOLE.answer(bool(body.get("approved")), str(body.get("name", "")).strip()[:40])
             self._json({"result": "recorded" if ok else "nothing is waiting for approval"})

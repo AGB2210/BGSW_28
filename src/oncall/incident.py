@@ -14,11 +14,11 @@ from pathlib import Path
 from typing import Callable
 
 from oncall import actions, detector, remedy, safety
-from oncall.agent import investigate
+from oncall.agent import Cancelled, investigate
 from oncall.config import get_settings
 from oncall.evidence import Ledger
-from oncall.schema import (Approval, EvidenceItem, Execution, IncidentReport, ProposedAction, TimelineEntry,
-                           Verification)
+from oncall.schema import (Approval, Diagnosis, EvidenceItem, Execution, IncidentReport, ProposedAction,
+                           TimelineEntry, Verification)
 
 REPORT_DIR = Path("reports")
 EventSink = Callable[[str, dict], None]
@@ -49,11 +49,14 @@ def _short(value: object, limit: int = 600) -> str:
     return text if len(text) <= limit else text[:limit] + "…"
 
 
-def verify_recovery(component: str, timeout_s: int = 180, every_s: int = 20) -> Verification:
+def verify_recovery(component: str, timeout_s: int = 180, every_s: int = 20,
+                    should_stop: Callable[[], bool] = lambda: False) -> Verification:
     """Recovered when the detector no longer flags the component against the baseline."""
     checks = []
     deadline = time.time() + timeout_s
     while True:
+        if should_stop():
+            raise Cancelled("recovery check cancelled by the operator")
         found = [a for a in detector.anomalies(detector.load_baseline(), detector.snapshot("1m"))
                  if a["service"] == component]
         checks.append(f"{_now():%H:%M:%S} " + ("; ".join(a["detail"] for a in found) if found
@@ -62,12 +65,16 @@ def verify_recovery(component: str, timeout_s: int = 180, every_s: int = 20) -> 
             return Verification(recovered=True, checks=checks)
         if time.time() >= deadline:
             return Verification(recovered=False, checks=checks)
-        time.sleep(every_s)
+        for _ in range(every_s):  # sleep in 1 s steps so a cancel takes effect quickly
+            if should_stop():
+                break
+            time.sleep(1)
 
 
 def respond(alert: str, approver: Approver, on_event: EventSink | None = None,
-            dry_run: bool | None = None) -> IncidentReport:
+            dry_run: bool | None = None, should_stop: Callable[[], bool] | None = None) -> IncidentReport:
     emit = on_event or (lambda kind, data: None)
+    stop = should_stop or (lambda: False)
     dry_run = get_settings().dry_run if dry_run is None else dry_run
     incident_id = f"inc-{_now():%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:4]}"
     timeline: list[TimelineEntry] = []
@@ -77,8 +84,22 @@ def respond(alert: str, approver: Approver, on_event: EventSink | None = None,
         emit(kind, {"incident_id": incident_id, "event": event, **data})
 
     log(f"Alert: {alert}", "alert", {"alert": alert})
+    try:
+        return _respond(alert, approver, emit, dry_run, stop, incident_id, timeline, log)
+    except Cancelled as exc:
+        log(f"Cancelled by the operator: {exc}", "cancelled", {"reason": str(exc)})
+        report = IncidentReport(
+            incident_id=incident_id, alert=alert, detected_at=timeline[0].at, status="cancelled",
+            diagnosis=Diagnosis(component=None, cause="Investigation cancelled before a conclusion",
+                                confidence=0.0, escalate=True, next_steps=["Re-run the investigation if needed"]),
+        )
+        return _finish(report, timeline, emit)
+
+
+def _respond(alert, approver, emit, dry_run, stop, incident_id, timeline, log) -> IncidentReport:
     ledger = Ledger()
-    diagnosis, ledger = investigate(alert, ledger, on_event=lambda k, d: emit(k, {"incident_id": incident_id, **d}))
+    diagnosis, ledger = investigate(alert, ledger, on_event=lambda k, d: emit(k, {"incident_id": incident_id, **d}),
+                                    should_stop=stop)
     log(f"Diagnosis: {diagnosis.component} — {diagnosis.cause} (confidence {diagnosis.confidence:.2f})",
         "diagnosis", {"diagnosis": diagnosis.model_dump()})
 
@@ -105,6 +126,8 @@ def respond(alert: str, approver: Approver, on_event: EventSink | None = None,
         return _finish(report, timeline, emit)
 
     approved, who = approver(proposal, report)
+    if stop():
+        raise Cancelled("cancelled while waiting for approval")
     report.approval = Approval(decision="approved" if approved else "rejected", by=who, at=_now())
     log(f"{'Approved' if approved else 'Rejected'} by {who}", "approval", {"approved": approved, "by": who})
     if not approved:
@@ -123,7 +146,7 @@ def respond(alert: str, approver: Approver, on_event: EventSink | None = None,
         return _finish(report, timeline, emit)
 
     log(f"Verifying recovery of {proposal.target}", "verifying", {"target": proposal.target})
-    report.verification = verify_recovery(diagnosis.component or proposal.target)
+    report.verification = verify_recovery(diagnosis.component or proposal.target, should_stop=stop)
     if report.verification.recovered:
         report.status = "resolved"
         log("Recovered: back to baseline", "verified", {"recovered": True})

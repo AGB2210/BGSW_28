@@ -1,21 +1,28 @@
 # Local environment adaptation for the OpenTelemetry Demo 3.1.0 (applied by scripts/demo.sh).
 #
-# Why: on our WSL2 laptop the product-catalog and checkout binaries are 21-22 MB,
-# but the demo caps each container at 20 MB of memory. The kernel cannot keep
-# their own code resident, so they re-read it from disk constantly (tens of
-# thousands of major page faults), stall, and the frontend fails at baseline.
+# Why: the demo caps each container's memory, and Linux counts a program's own
+# code against that cap. On our WSL2 laptop five services sit at their cap and
+# cannot keep their code resident, so they re-read it from disk constantly,
+# stall, and break other services at baseline with no incident injected.
+# Measured (cap -> program size, major page faults after ~10 min):
+#   product-catalog  20 MB -> 21 MB binary, 51,348 faults
+#   checkout         20 MB -> 22 MB binary, 31,938 faults
+#   flagd            75 MB -> 107 MB binary, 99,439 faults (recommendation timed out on it)
+#   quote            40 MB -> at cap, 22,140 faults
+#   payment         140 MB -> 117 MB binary at cap, 15,809 faults (health check timing out)
+# Every other service had fewer than 1,000 faults and is left untouched.
 #
-# What: raise only these two memory caps to 64 MB. Nothing else changes: no demo
-# source or config files are edited, GOMEMLIMIT and all other settings stay as
-# shipped, and every practice incident behaves exactly as before.
+# What: raise only these memory caps. Nothing else changes: no demo source or
+# config files are edited, GOMEMLIMIT and all other settings stay as shipped, and
+# every practice incident behaves exactly as before.
 services:
   product-catalog:
-    deploy:
-      resources:
-        limits:
-          memory: 64M
+    deploy: {resources: {limits: {memory: 64M}}}
   checkout:
-    deploy:
-      resources:
-        limits:
-          memory: 64M
+    deploy: {resources: {limits: {memory: 64M}}}
+  flagd:
+    deploy: {resources: {limits: {memory: 160M}}}
+  quote:
+    deploy: {resources: {limits: {memory: 96M}}}
+  payment:
+    deploy: {resources: {limits: {memory: 256M}}}

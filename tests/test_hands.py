@@ -40,7 +40,8 @@ def test_traffic_flood_throttles_load():
 @pytest.fixture
 def loop(tmp_path, monkeypatch):
     monkeypatch.setattr(incident, "REPORT_DIR", tmp_path)
-    monkeypatch.setattr(incident, "investigate", lambda alert, ledger, on_event: (_diag(), _ledger(["not running"])))
+    monkeypatch.setattr(incident, "investigate",
+                        lambda alert, ledger, on_event, should_stop=None: (_diag(), _ledger(["not running"])))
     monkeypatch.setattr(incident.safety, "kill_switch_engaged", lambda: False)
     calls = []
     monkeypatch.setattr(incident.actions, "execute",
@@ -57,7 +58,7 @@ def test_rejected_action_changes_nothing(loop):
 
 
 def test_approved_action_runs_and_verifies(loop, monkeypatch):
-    monkeypatch.setattr(incident, "verify_recovery", lambda c: Verification(recovered=True, checks=["ok"]))
+    monkeypatch.setattr(incident, "verify_recovery", lambda c, **kw: Verification(recovered=True, checks=["ok"]))
     events = []
     report = incident.respond("alert", lambda p, r: (True, "agb"), lambda k, d: events.append(k), dry_run=False)
     assert report.status == "resolved" and loop == [("execute", "valkey-cart", "agb", False)]
@@ -66,10 +67,43 @@ def test_approved_action_runs_and_verifies(loop, monkeypatch):
 
 
 def test_failed_recovery_rolls_back_and_escalates(loop, monkeypatch):
-    monkeypatch.setattr(incident, "verify_recovery", lambda c: Verification(recovered=False, checks=["still bad"]))
+    monkeypatch.setattr(incident, "verify_recovery", lambda c, **kw: Verification(recovered=False, checks=["still bad"]))
     report = incident.respond("alert", lambda p, r: (True, "agb"), dry_run=False)
     assert report.status == "escalated" and report.verification.rolled_back is True
     assert loop[-1] == ("rollback", "act-1")
+
+
+def test_cancel_during_investigation_reports_cancelled(loop, monkeypatch):
+    from oncall.agent import Cancelled
+
+    def cancelled(alert, ledger, on_event, should_stop=None):
+        raise Cancelled("stopped")
+
+    monkeypatch.setattr(incident, "investigate", cancelled)
+    events = []
+    report = incident.respond("alert", lambda p, r: (True, "agb"), lambda k, d: events.append(k), dry_run=False)
+    assert report.status == "cancelled" and loop == []
+    assert "cancelled" in events and "report" in events
+
+
+def test_cancel_while_waiting_for_approval_changes_nothing(loop):
+    stop = {"now": False}
+
+    def approver(proposal, report):
+        stop["now"] = True  # operator presses Cancel instead of answering
+        return False, "cancelled"
+
+    report = incident.respond("alert", approver, dry_run=False, should_stop=lambda: stop["now"])
+    assert report.status == "cancelled" and loop == []
+
+
+def test_agent_stops_before_calling_the_model(monkeypatch):
+    from oncall import agent
+
+    monkeypatch.setattr(agent.llm, "chat", lambda *a, **k: (_ for _ in ()).throw(AssertionError("model called")))
+    monkeypatch.setattr(agent.llm, "unload", lambda: None)
+    with pytest.raises(agent.Cancelled):
+        agent.investigate("alert", should_stop=lambda: True)
 
 
 def test_dry_run_reports_without_verifying(loop):

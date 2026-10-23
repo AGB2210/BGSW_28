@@ -113,6 +113,7 @@ select, input[type=text] { width: 100%; padding: 6px 8px; border: 1px solid var(
       <input type="text" id="alertInput" placeholder="Alert text (empty = use the detector)">
       <div class="row">
         <button class="btn primary" id="investigateBtn">Investigate</button>
+        <button class="btn" id="cancelBtn" hidden>Cancel investigation</button>
       </div>
       <label class="toggle"><span>Auto-detect alerts</span><input type="checkbox" id="autoDetect"></label>
       <label class="toggle"><span>Dry run (no changes)</span><input type="checkbox" id="dryRun"></label>
@@ -218,7 +219,9 @@ async function refreshState() {
   const sel = $("#faultSelect");
   if (!sel.options.length) state.catalogue.forEach(i => { const o = el("option", null, `${i.id} — ${i.description}`); o.value = i.id; sel.append(o); });
   $("#investigateBtn").disabled = state.busy;
+  $("#cancelBtn").hidden = !state.busy;
 }
+$("#cancelBtn").onclick = async () => { const r = await api("/api/cancel", {}); toast(r.result); $("#cancelBtn").disabled = true; setTimeout(() => { $("#cancelBtn").disabled = false; }, 4000); };
 $("#investigateBtn").onclick = async () => { const r = await api("/api/respond", { alert: $("#alertInput").value }); toast(r.result); refreshState(); };
 $("#autoDetect").onchange = (e) => api("/api/settings", { auto_detect: e.target.checked }).then(refreshState);
 $("#dryRun").onchange = (e) => api("/api/settings", { dry_run: e.target.checked }).then(refreshState);
@@ -302,6 +305,7 @@ $("#rejectBtn").onclick = () => answer(false);
 function handle(ev) {
   if (ev.kind === "alert") { startIncident(ev); step("alert", "alert", ev.alert); return; }
   if (ev.kind === "fault" || ev.kind === "kill_switch") { toast(ev.event); refreshState(); return; }
+  if (ev.kind === "cancelling") { setStatus("cancelling", "warn"); step("cancel", "warn", ev.event); return; }
   if (ev.kind === "error") { setStatus("error", "bad"); step("error", "warn", ev.event); return; }
   if (ev.incident_id && ev.incident_id !== current) return;
   switch (ev.kind) {
@@ -312,6 +316,7 @@ function handle(ev) {
     }
     case "diagnosis": showDiagnosis(ev.diagnosis); step("diagnosis", "good", ev.event); break;
     case "escalated": step("escalate", "warn", ev.reason); setStatus("escalated", "warn"); break;
+    case "cancelled": $("#approvalCard").hidden = true; step("cancelled", "warn", ev.event); setStatus("cancelled", "warn"); break;
     case "proposal": step("proposal", "", ev.event); break;
     case "awaiting_approval": openApproval(ev); break;
     case "approval": $("#approvalCard").hidden = true; step(ev.approved ? "approved" : "rejected", ev.approved ? "good" : "warn", ev.event); setStatus(ev.approved ? "acting" : "rejected", ev.approved ? "info" : "warn"); break;
@@ -319,7 +324,7 @@ function handle(ev) {
     case "verifying": step("verify", "", ev.event); setStatus("verifying", "info"); break;
     case "verified": step(ev.recovered ? "recovered" : "rollback", ev.recovered ? "good" : "warn", ev.event); break;
     case "report": {
-      const cls = { resolved: "ok", escalated: "warn", rejected: "warn", dry_run: "info", failed: "bad" }[ev.status] || "";
+      const cls = { resolved: "ok", escalated: "warn", rejected: "warn", dry_run: "info", failed: "bad", cancelled: "warn" }[ev.status] || "";
       setStatus(ev.status, cls);
       const wrap = el("span"); wrap.append(el("span", "result " + cls, ev.status.replace("_", " ")), document.createTextNode("  "));
       const a = el("a", null, "Open report"); a.href = `/reports/${ev.incident_id}.md`; a.target = "_blank"; a.rel = "noopener";
