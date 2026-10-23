@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any
+from typing import Any, Callable
 
 from pydantic import ValidationError
 
@@ -53,14 +53,17 @@ def _escalation(reason: str) -> Diagnosis:
                      next_steps=["Review the evidence ledger manually"])
 
 
-def investigate(alert: str, ledger: Ledger | None = None, verbose: bool = False) -> tuple[Diagnosis, Ledger]:
+def investigate(alert: str, ledger: Ledger | None = None, verbose: bool = False,
+                on_event: Callable[[str, dict], None] | None = None) -> tuple[Diagnosis, Ledger]:
+    """Investigate an alert. `on_event(kind, data)` receives each tool call as it happens."""
     try:
-        return _investigate(alert, ledger or Ledger(), verbose)
+        return _investigate(alert, ledger or Ledger(), verbose, on_event or (lambda kind, data: None))
     finally:
         llm.unload()
 
 
-def _investigate(alert: str, ledger: Ledger, verbose: bool) -> tuple[Diagnosis, Ledger]:
+def _investigate(alert: str, ledger: Ledger, verbose: bool,
+                 on_event: Callable[[str, dict], None]) -> tuple[Diagnosis, Ledger]:
     settings = get_settings()
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -82,6 +85,8 @@ def _investigate(alert: str, ledger: Ledger, verbose: bool) -> tuple[Diagnosis, 
         for call in calls:
             fn = call["function"]
             output = tools.call(fn["name"], fn.get("arguments") or {}, ledger)
+            on_event("tool", {"tool": fn["name"], "args": fn.get("arguments") or {},
+                              "evidence_id": output.get("evidence_id"), "error": output.get("error")})
             if verbose:
                 print(f"[tool] {fn['name']}({fn.get('arguments')}) -> {output.get('evidence_id', output.get('error'))}")
             messages.append({"role": "tool", "content": json.dumps(output, default=str)})

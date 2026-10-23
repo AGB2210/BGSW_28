@@ -63,6 +63,49 @@ def cmd_detect(_: argparse.Namespace) -> int:
     return 0
 
 
+def _cli_events(kind: str, data: dict) -> None:
+    if kind == "tool":
+        print(f"  [tool] {data['tool']}({data['args']}) -> {data.get('evidence_id') or data.get('error')}")
+    elif "event" in data:
+        print(f"[{kind}] {data['event']}")
+
+
+def _cli_approver(proposal, report) -> tuple[bool, str]:
+    answer = input(f"\nApprove {proposal.action} on {proposal.target}? Type your name to approve, "
+                   "or press Enter to reject: ").strip()
+    return (bool(answer), answer or "operator")
+
+
+def cmd_respond(args: argparse.Namespace) -> int:
+    """Full loop for one alert: investigate, propose, ask approval, act, verify, report."""
+    from oncall import actions
+    from oncall.incident import respond
+
+    if not args.dry_run and not actions.available():
+        print("Action API is not running. Start it with `action-api`, or add --dry-run.")
+        return 1
+    report = respond(args.alert, _cli_approver, _cli_events, dry_run=args.dry_run)
+    print(f"\nStatus: {report.status}. Report: reports/{report.incident_id}.md")
+    return 0
+
+
+def cmd_watch(args: argparse.Namespace) -> int:
+    """Poll the detector; when it fires, run the full response loop."""
+    import time
+
+    from oncall import detector
+    from oncall.incident import respond
+
+    print(f"Watching every {args.every}s (Ctrl+C to stop)")
+    while True:
+        alert = detector.check()
+        if alert:
+            print(f"\nALERT: {alert}")
+            report = respond(alert, _cli_approver, _cli_events, dry_run=args.dry_run)
+            print(f"Status: {report.status}. Report: reports/{report.incident_id}.md")
+        time.sleep(args.every)
+
+
 SCHEMA_PATH = "schemas/incident_report.schema.json"
 
 
@@ -88,6 +131,16 @@ def main(argv: list[str] | None = None) -> int:
     inv.add_argument("alert", help='e.g. "checkout error rate above 5%"')
     inv.add_argument("--show-evidence", action="store_true", help="print the evidence ledger")
     inv.set_defaults(fn=cmd_investigate)
+
+    resp = sub.add_parser("respond", help="investigate, propose, approve, act, verify and report")
+    resp.add_argument("alert")
+    resp.add_argument("--dry-run", action="store_true", help="show the action without executing it")
+    resp.set_defaults(fn=cmd_respond)
+
+    watch = sub.add_parser("watch", help="run the detector and respond to alerts")
+    watch.add_argument("--every", type=int, default=30, help="seconds between checks")
+    watch.add_argument("--dry-run", action="store_true")
+    watch.set_defaults(fn=cmd_watch)
 
     sub.add_parser("schema", help=f"write {SCHEMA_PATH}").set_defaults(fn=cmd_schema)
     sub.add_parser("baseline", help="save current metrics as the healthy baseline").set_defaults(fn=cmd_baseline)
