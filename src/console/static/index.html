@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>On-Call Console</title>
+<style>
+:root {
+  --bg: #f4f5f7; --panel: #ffffff; --fg: #16191f; --muted: #5d6573; --line: #e1e4e9; --soft: #eef0f3;
+  --accent: #b45309; --accent-soft: #fdf1e3;
+  --ok: #17803d; --ok-soft: #e3f4e8; --warn: #a15c07; --warn-soft: #fbf0dc; --bad: #b42318; --bad-soft: #fbe5e2;
+  --info: #2457c5; --info-soft: #e5edfb;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg: #0f1115; --panel: #171a20; --fg: #e7e9ed; --muted: #98a0ad; --line: #2a2f38; --soft: #20242c;
+  --accent: #f0a04b; --accent-soft: #3a2817;
+  --ok: #5bd18b; --ok-soft: #15301f; --warn: #f0b75a; --warn-soft: #382a12; --bad: #ff8b80; --bad-soft: #3b1a18;
+  --info: #8fb0ff; --info-soft: #1b2645; } }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 var(--sans); }
+button, input, select { font: inherit; color: inherit; }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+
+header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+header h1 { font-size: 16px; font-weight: 650; margin: 0; letter-spacing: .01em; }
+header h1 span { color: var(--accent); }
+.pills { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+.pill { font: 600 11px var(--mono); letter-spacing: .04em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; background: var(--soft); color: var(--muted); white-space: nowrap; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.bad { background: var(--bad-soft); color: var(--bad); }
+.pill.info { background: var(--info-soft); color: var(--info); }
+
+.layout { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 16px; padding: 16px 20px 40px; max-width: 1400px; margin: 0 auto; }
+@media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+aside, main { display: grid; gap: 16px; align-content: start; min-width: 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 10px; min-width: 0; }
+.card h2 { font-size: 12px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0; display: flex; justify-content: space-between; align-items: center; }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 4px 4px; border-bottom: 1px solid var(--line); }
+th { font: 600 11px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+td.n, th.n { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+tr:last-child td { border-bottom: 0; }
+tr.hot td { color: var(--bad); font-weight: 600; }
+
+.row { display: flex; gap: 8px; align-items: center; }
+.row > * { min-width: 0; }
+select, input[type=text] { width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+.btn { padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; font-weight: 550; white-space: nowrap; }
+.btn:hover { background: var(--soft); }
+.btn.primary { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.btn.primary:hover { opacity: .9; }
+.btn.danger { background: var(--bad); color: #fff; border-color: var(--bad); }
+.btn.danger.off { background: var(--panel); color: var(--bad); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.toggle { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.toggle input { width: 34px; height: 18px; accent-color: var(--accent); }
+
+.incident-head { display: grid; gap: 4px; }
+.incident-head .id { font: 12px var(--mono); color: var(--muted); }
+.incident-head .alert { font-size: 15px; font-weight: 550; }
+
+.feed { display: grid; gap: 0; }
+.step { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 12px; padding: 8px 0; border-bottom: 1px dashed var(--line); }
+.step:last-child { border-bottom: 0; }
+.step .tag { font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding-top: 2px; }
+.step .tag.alert { color: var(--bad); } .step .tag.tool { color: var(--info); } .step .tag.good { color: var(--ok); } .step .tag.warn { color: var(--warn); }
+.step .body { min-width: 0; overflow-wrap: anywhere; }
+.step code { font: 12.5px var(--mono); }
+
+.diag { display: grid; gap: 8px; }
+.diag .comp { font-size: 22px; font-weight: 700; letter-spacing: -.01em; }
+.diag .cause { font-size: 14px; }
+.meter { height: 6px; background: var(--soft); border-radius: 3px; overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--ok); }
+.meter.low i { background: var(--warn); }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { font: 12px var(--mono); padding: 2px 7px; border-radius: 5px; background: var(--soft); }
+
+.approval { border: 2px solid var(--accent); background: var(--accent-soft); }
+.approval .what { font-size: 16px; font-weight: 650; }
+.approval .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.approval input { max-width: 200px; }
+
+.result { font-size: 16px; font-weight: 650; }
+.result.ok { color: var(--ok); } .result.bad { color: var(--bad); } .result.warn { color: var(--warn); }
+.empty { color: var(--muted); padding: 24px 0; text-align: center; }
+.log td { font-size: 12.5px; }
+.status-done { color: var(--ok); } .status-refused, .status-failed { color: var(--bad); } .status-dry_run { color: var(--info); }
+.scroll { max-height: 260px; overflow: auto; }
+.toast { position: fixed; bottom: 16px; right: 16px; background: var(--fg); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+.toast.show { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>On-Call <span>Console</span></h1>
+  <span class="muted">AI on-call engineer · OpenTelemetry Demo</span>
+  <div class="pills" id="pills"></div>
+</header>
+
+<div class="layout">
+  <aside>
+    <section class="card">
+      <h2>Respond</h2>
+      <input type="text" id="alertInput" placeholder="Alert text (empty = use the detector)">
+      <div class="row">
+        <button class="btn primary" id="investigateBtn">Investigate</button>
+      </div>
+      <label class="toggle"><span>Auto-detect alerts</span><input type="checkbox" id="autoDetect"></label>
+      <label class="toggle"><span>Dry run (no changes)</span><input type="checkbox" id="dryRun"></label>
+      <button class="btn danger off" id="killBtn">Kill switch</button>
+    </section>
+
+    <section class="card">
+      <h2>Practice incident <span class="pill" id="injectedPill">none</span></h2>
+      <select id="faultSelect" aria-label="Practice incident"></select>
+      <div class="row">
+        <button class="btn" id="injectBtn">Inject</button>
+        <button class="btn" id="resetBtn">Reset all</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Services <span class="muted mono" id="svcTime"></span></h2>
+      <div class="scroll"><table>
+        <thead><tr><th>Service</th><th class="n">req/s</th><th class="n">err %</th><th class="n">p95 ms</th></tr></thead>
+        <tbody id="svcBody"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+      </table></div>
+    </section>
+  </aside>
+
+  <main>
+    <section class="card" id="incidentCard">
+      <h2>Incident <span class="pill" id="statusPill">idle</span></h2>
+      <div class="incident-head">
+        <div class="id" id="incId"></div>
+        <div class="alert" id="incAlert">No incident yet. Inject a practice incident or press Investigate.</div>
+      </div>
+    </section>
+
+    <section class="card approval" id="approvalCard" hidden>
+      <h2>Approval needed</h2>
+      <div class="what" id="apWhat"></div>
+      <div id="apReason"></div>
+      <div class="muted" id="apMode"></div>
+      <div class="actions">
+        <input type="text" id="apName" placeholder="Your name" aria-label="Approver name">
+        <button class="btn primary" id="approveBtn">Approve</button>
+        <button class="btn" id="rejectBtn">Reject</button>
+      </div>
+    </section>
+
+    <section class="card" id="diagCard" hidden>
+      <h2>Diagnosis <span class="pill" id="diagCat"></span></h2>
+      <div class="diag">
+        <div class="comp" id="diagComp"></div>
+        <div class="cause" id="diagCause"></div>
+        <div class="row"><span class="muted">Confidence</span><span class="mono" id="diagConf"></span></div>
+        <div class="meter" id="diagMeter"><i></i></div>
+        <div class="chips" id="diagEvidence"></div>
+        <div id="diagNext"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Investigation</h2>
+      <div class="feed" id="feed"><div class="empty">Steps appear here live as the agent works.</div></div>
+    </section>
+
+    <section class="card">
+      <h2>Action log <span class="muted">every call to the Action API</span></h2>
+      <div class="scroll"><table class="log">
+        <thead><tr><th>Time</th><th>Action</th><th>Target</th><th>Status</th><th>By</th></tr></thead>
+        <tbody id="logBody"><tr><td colspan="5" class="muted">No actions yet.</td></tr></tbody>
+      </table></div>
+    </section>
+  </main>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const time = (t) => new Date(t * 1000).toLocaleTimeString([], { hour12: false });
+let state = {}, current = null, approvalOpenFor = null;
+
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 2600); }
+async function api(path, body) {
+  const r = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
+  return r.json();
+}
+
+// ---------- state & controls ----------
+function renderPills() {
+  const p = $("#pills"); p.textContent = "";
+  const add = (txt, cls) => p.append(el("span", "pill " + cls, txt));
+  add(state.action_api ? "Action API online" : "Action API offline", state.action_api ? "ok" : "bad");
+  add(state.baseline ? "Baseline saved" : "No baseline", state.baseline ? "ok" : "warn");
+  if (state.auto_detect) add("Auto-detect on", "info");
+  add(state.dry_run ? "Dry run" : "Live actions", state.dry_run ? "info" : "warn");
+  if (state.kill_switch) add("Kill switch engaged", "bad");
+}
+async function refreshState() {
+  try { state = await api("/api/state"); } catch { return; }
+  renderPills();
+  $("#autoDetect").checked = state.auto_detect;
+  $("#dryRun").checked = state.dry_run;
+  const k = $("#killBtn"); k.classList.toggle("off", !state.kill_switch); k.textContent = state.kill_switch ? "Release kill switch" : "Kill switch";
+  const ip = $("#injectedPill"); ip.textContent = state.injected.length ? state.injected.join(", ") : "none"; ip.className = "pill " + (state.injected.length ? "warn" : "");
+  const sel = $("#faultSelect");
+  if (!sel.options.length) state.catalogue.forEach(i => { const o = el("option", null, `${i.id} — ${i.description}`); o.value = i.id; sel.append(o); });
+  $("#investigateBtn").disabled = state.busy;
+}
+$("#investigateBtn").onclick = async () => { const r = await api("/api/respond", { alert: $("#alertInput").value }); toast(r.result); refreshState(); };
+$("#autoDetect").onchange = (e) => api("/api/settings", { auto_detect: e.target.checked }).then(refreshState);
+$("#dryRun").onchange = (e) => api("/api/settings", { dry_run: e.target.checked }).then(refreshState);
+$("#killBtn").onclick = () => api("/api/settings", { kill_switch: !state.kill_switch }).then(refreshState);
+$("#injectBtn").onclick = async () => { const r = await api("/api/fault", { incident: $("#faultSelect").value }); toast(r.error || "Injected"); refreshState(); };
+$("#resetBtn").onclick = async () => { const r = await api("/api/fault", { reset: true }); toast(r.error || "Reset done"); refreshState(); };
+
+// ---------- services ----------
+async function refreshServices() {
+  let data; try { data = await api("/api/services"); } catch { return; }
+  const hot = new Set(data.anomalies.map(a => a.service));
+  const body = $("#svcBody"); body.textContent = "";
+  data.services.filter(s => s.service !== "load-generator").forEach(s => {
+    const tr = el("tr", hot.has(s.service) ? "hot" : "");
+    tr.append(el("td", null, s.service), el("td", "n", s.rps.toFixed(2)), el("td", "n", s.error_pct.toFixed(1)), el("td", "n", s.p95_ms == null ? "–" : Math.round(s.p95_ms)));
+    body.append(tr);
+  });
+  if (!data.services.length) { const tr = el("tr"); const td = el("td", "muted", "No traffic data"); td.colSpan = 4; tr.append(td); body.append(tr); }
+  $("#svcTime").textContent = new Date().toLocaleTimeString([], { hour12: false });
+}
+
+// ---------- action log ----------
+async function refreshLog() {
+  let rows; try { rows = await api("/api/actions"); } catch { return; }
+  const body = $("#logBody"); body.textContent = "";
+  if (!rows.length) { const tr = el("tr"); const td = el("td", "muted", "No actions yet."); td.colSpan = 5; tr.append(td); body.append(tr); return; }
+  rows.slice().reverse().forEach(r => {
+    const tr = el("tr");
+    tr.title = r.result || "";
+    tr.append(el("td", "mono", (r.at || "").slice(11, 19)), el("td", "mono", r.action), el("td", "mono", r.target || ""),
+              el("td", "mono status-" + r.status, r.status), el("td", null, r.approved_by || "—"));
+    body.append(tr);
+  });
+}
+
+// ---------- incident feed ----------
+function setStatus(text, cls) { const p = $("#statusPill"); p.textContent = text; p.className = "pill " + (cls || ""); }
+function step(tag, tagCls, content) {
+  const feed = $("#feed"); if (feed.querySelector(".empty")) feed.textContent = "";
+  const row = el("div", "step"); row.append(el("div", "tag " + (tagCls || ""), tag));
+  const body = el("div", "body"); if (typeof content === "string") body.textContent = content; else body.append(content);
+  row.append(body); feed.append(row);
+}
+function startIncident(ev) {
+  current = ev.incident_id; approvalOpenFor = null;
+  $("#feed").textContent = ""; $("#diagCard").hidden = true; $("#approvalCard").hidden = true;
+  $("#incId").textContent = ev.incident_id; $("#incAlert").textContent = ev.alert;
+  setStatus("investigating", "info");
+}
+function showDiagnosis(d) {
+  $("#diagCard").hidden = false;
+  $("#diagComp").textContent = d.component || "Unknown component";
+  $("#diagCause").textContent = d.cause;
+  $("#diagCat").textContent = d.category;
+  $("#diagConf").textContent = d.confidence.toFixed(2) + (d.escalate ? " · escalating" : "");
+  const m = $("#diagMeter"); m.classList.toggle("low", d.escalate); m.querySelector("i").style.width = (d.confidence * 100) + "%";
+  const ev = $("#diagEvidence"); ev.textContent = ""; d.evidence.forEach(id => ev.append(el("span", "chip", id)));
+  const nx = $("#diagNext"); nx.textContent = "";
+  if (d.next_steps && d.next_steps.length) { const ul = el("ul"); ul.style.margin = "0"; d.next_steps.forEach(s => ul.append(el("li", "muted", s))); nx.append(ul); }
+}
+function openApproval(ev) {
+  approvalOpenFor = ev.incident_id;
+  const p = ev.proposal;
+  $("#apWhat").textContent = `${p.action.replace(/_/g, " ")} → ${p.target}`;
+  $("#apReason").textContent = p.reason;
+  $("#apMode").textContent = ev.dry_run ? "Dry run: the Action API will only describe the change." : "Live: this will change the system.";
+  $("#approvalCard").hidden = false; setStatus("awaiting approval", "warn");
+  try { $("#apName").value = localStorage.getItem("approver") || ""; } catch {}
+  $("#apName").focus();
+}
+async function answer(approved) {
+  const name = $("#apName").value.trim();
+  if (approved && !name) { toast("Type your name to approve"); $("#apName").focus(); return; }
+  try { localStorage.setItem("approver", name); } catch {}
+  const r = await api("/api/approve", { approved, name: name || "operator" });
+  toast(r.result); $("#approvalCard").hidden = true;
+}
+$("#approveBtn").onclick = () => answer(true);
+$("#rejectBtn").onclick = () => answer(false);
+
+function handle(ev) {
+  if (ev.kind === "alert") { startIncident(ev); step("alert", "alert", ev.alert); return; }
+  if (ev.kind === "fault" || ev.kind === "kill_switch") { toast(ev.event); refreshState(); return; }
+  if (ev.kind === "error") { setStatus("error", "bad"); step("error", "warn", ev.event); return; }
+  if (ev.incident_id && ev.incident_id !== current) return;
+  switch (ev.kind) {
+    case "tool": {
+      const c = el("code"); c.textContent = `${ev.tool}(${Object.entries(ev.args || {}).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(", ")})`;
+      const span = el("span"); span.append(c, document.createTextNode(ev.evidence_id ? `  →  ${ev.evidence_id}` : `  →  ${ev.error}`));
+      step("tool", "tool", span); break;
+    }
+    case "diagnosis": showDiagnosis(ev.diagnosis); step("diagnosis", "good", ev.event); break;
+    case "escalated": step("escalate", "warn", ev.reason); setStatus("escalated", "warn"); break;
+    case "proposal": step("proposal", "", ev.event); break;
+    case "awaiting_approval": openApproval(ev); break;
+    case "approval": $("#approvalCard").hidden = true; step(ev.approved ? "approved" : "rejected", ev.approved ? "good" : "warn", ev.event); setStatus(ev.approved ? "acting" : "rejected", ev.approved ? "info" : "warn"); break;
+    case "execution": step("action", ev.result.status === "done" ? "good" : "warn", ev.event); refreshLog(); break;
+    case "verifying": step("verify", "", ev.event); setStatus("verifying", "info"); break;
+    case "verified": step(ev.recovered ? "recovered" : "rollback", ev.recovered ? "good" : "warn", ev.event); break;
+    case "report": {
+      const cls = { resolved: "ok", escalated: "warn", rejected: "warn", dry_run: "info", failed: "bad" }[ev.status] || "";
+      setStatus(ev.status, cls);
+      const wrap = el("span"); wrap.append(el("span", "result " + cls, ev.status.replace("_", " ")), document.createTextNode("  "));
+      const a = el("a", null, "Open report"); a.href = `/reports/${ev.incident_id}.md`; a.target = "_blank"; a.rel = "noopener";
+      const j = el("a", null, "JSON"); j.href = `/reports/${ev.incident_id}.json`; j.target = "_blank"; j.rel = "noopener";
+      wrap.append(a, document.createTextNode(" · "), j);
+      step("report", "good", wrap); refreshLog(); refreshState(); break;
+    }
+  }
+}
+
+const source = new EventSource("/events");
+source.onmessage = (m) => handle(JSON.parse(m.data));
+source.onerror = () => toast("Lost connection to the console server; retrying…");
+
+refreshState(); refreshServices(); refreshLog();
+setInterval(refreshState, 5000); setInterval(refreshServices, 10000); setInterval(refreshLog, 10000);
+</script>
+</body>
+</html>

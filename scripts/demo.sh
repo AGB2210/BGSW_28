@@ -8,10 +8,12 @@
 #
 # Lean = the demo's minimal mode (no Kafka, accounting, fraud-detection) minus
 # grafana, flagd-ui and telemetry-docs, which the agent does not use.
+# compose.local.yaml (in this repo) raises two memory caps; see that file for why.
 # Expects the demo cloned at $DEMO_DIR (default ~/opentelemetry-demo) and checked out at tag 3.1.0.
 set -euo pipefail
 
 DEMO_DIR="${DEMO_DIR:-$HOME/opentelemetry-demo}"
+LOCAL_OVERRIDE="$(cd "$(dirname "$0")/.." && pwd)/compose.local.yaml"
 export DEMO_VERSION="${DEMO_VERSION:-3.1.0}"   # release images, not nightly "latest"
 
 SERVICES=(
@@ -27,7 +29,7 @@ SERVICES=(
 cd "$DEMO_DIR"
 compose() {
   docker compose --env-file .env --env-file .env.override \
-    -f compose.yaml -f compose.observability.yaml -f compose.extras.yaml "$@"
+    -f compose.yaml -f compose.observability.yaml -f compose.extras.yaml -f "$LOCAL_OVERRIDE" "$@"
 }
 
 case "${1:-}" in

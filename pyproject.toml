@@ -16,6 +16,7 @@ dev = ["pytest>=8"]
 oncall = "oncall.__main__:main"
 faultctl = "faultctl.__main__:main"
 action-api = "actionapi.__main__:main"
+oncall-console = "console.__main__:main"
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -23,6 +24,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+console = ["static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

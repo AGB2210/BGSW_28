@@ -1,0 +1,21 @@
+# Local environment adaptation for the OpenTelemetry Demo 3.1.0 (applied by scripts/demo.sh).
+#
+# Why: on our WSL2 laptop the product-catalog and checkout binaries are 21-22 MB,
+# but the demo caps each container at 20 MB of memory. The kernel cannot keep
+# their own code resident, so they re-read it from disk constantly (tens of
+# thousands of major page faults), stall, and the frontend fails at baseline.
+#
+# What: raise only these two memory caps to 64 MB. Nothing else changes: no demo
+# source or config files are edited, GOMEMLIMIT and all other settings stay as
+# shipped, and every practice incident behaves exactly as before.
+services:
+  product-catalog:
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+  checkout:
+    deploy:
+      resources:
+        limits:
+          memory: 64M
