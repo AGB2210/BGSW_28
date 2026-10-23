@@ -8,6 +8,8 @@ from oncall.config import get_settings
 from oncall.http import get_json
 from oncall.tools import tool
 
+HIDDEN_SERVICES = {"flagd", "flagd-ui"}
+
 
 def promql(query: str) -> list[dict[str, Any]]:
     """Run an instant PromQL query and return the raw result vector."""
@@ -43,5 +45,6 @@ def service_overview(window: str = "5m") -> list[dict[str, Any]]:
             "p95_ms": round(p95[svc], 1) if svc in p95 and p95[svc] == p95[svc] else None,
         }
         for svc, rate in rps.items()
+        if rate > 0 and svc not in HIDDEN_SERVICES
     ]
-    return sorted(rows, key=lambda r: (-r["error_pct"], -(r["p95_ms"] or 0)))
+    return sorted(rows, key=lambda r: (-r["error_pct"], -(r["p95_ms"] or 0)))[:12]

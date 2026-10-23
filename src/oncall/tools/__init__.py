@@ -59,4 +59,4 @@ def call(name: str, args: dict[str, Any], ledger: Ledger) -> dict[str, Any]:
 
 
 # Import tool modules so their @tool decorators register.
-from oncall.tools import metrics  # noqa: E402,F401
+from oncall.tools import containers, logs, metrics, traces  # noqa: E402,F401
