@@ -55,6 +55,9 @@ def fetch_spans(service: str, minutes: int, depth: int = 20) -> list[dict[str, A
             for sp in ss.get("spans", []):
                 events = [e for e in sp.get("events", []) if not e["name"].startswith("feature_flag")]
                 exc = next((_attrs(e.get("attributes", [])) for e in events if e["name"] == "exception"), {})
+                attrs = _attrs(sp.get("attributes", []))
+                callee = (attrs.get("rpc.service") or attrs.get("peer.service") or attrs.get("server.address")
+                          or attrs.get("net.peer.name") or attrs.get("db.system") or "")
                 spans.append({
                     "trace_id": sp["traceId"],
                     "span_id": sp["spanId"],
@@ -62,6 +65,7 @@ def fetch_spans(service: str, minutes: int, depth: int = 20) -> list[dict[str, A
                     "service": svc,
                     "name": sp["name"],
                     "kind": KIND.get(sp.get("kind"), "?"),
+                    "callee": str(callee).removeprefix("oteldemo."),
                     "error": sp.get("status", {}).get("code") == STATUS_ERROR,
                     "message": sp.get("status", {}).get("message") or exc.get("exception.message", ""),
                     "ms": (int(sp["endTimeUnixNano"]) - int(sp["startTimeUnixNano"])) / 1e6,
@@ -97,13 +101,20 @@ def search_traces(service: str, minutes: int = 5) -> dict[str, Any]:
 
     traces = {s["trace_id"] for s in spans}
     failed = {s["trace_id"] for s in spans if s["error"]}
-    groups: dict[tuple[str, str, str], list[str]] = defaultdict(list)
+    has_child = {s["parent_id"] for s in spans}
+    groups: dict[tuple[str, str, str, str, bool], list[str]] = defaultdict(list)
     for s in _origins(spans):
-        groups[(s["service"], s["name"], s["message"][:200])].append(s["trace_id"])
-    origins = [
-        {"service": svc, "operation": op, "error": msg or "(no message)", "count": len(ids), "example_trace": ids[0]}
-        for (svc, op, msg), ids in sorted(groups.items(), key=lambda kv: -len(kv[1]))[:5]
-    ]
+        # A failed outgoing call with no span from the other side means the callee never answered.
+        no_answer = s["kind"] == "client" and s["span_id"] not in has_child
+        groups[(s["service"], s["name"], s["message"][:200], s["callee"], no_answer)].append(s["trace_id"])
+    origins = []
+    for (svc, op, msg, callee, no_answer), ids in sorted(groups.items(), key=lambda kv: -len(kv[1]))[:5]:
+        origin = {"service": svc, "operation": op, "error": msg or "(no message)", "count": len(ids), "example_trace": ids[0]}
+        if callee:
+            origin["calls"] = callee
+        if no_answer:
+            origin["note"] = f"no response recorded from {callee or 'the callee'}; suspect the callee, not {svc}"
+        origins.append(origin)
 
     durations: dict[tuple[str, str], list[float]] = defaultdict(list)
     for s in spans:

@@ -8,8 +8,15 @@ from oncall.config import get_settings
 from oncall.http import post_json
 
 
-def chat(messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = None) -> dict[str, Any]:
-    """Send one chat turn and return the assistant message (may contain tool_calls)."""
+def chat(
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None = None,
+    schema: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Send one chat turn and return the assistant message (may contain tool_calls).
+
+    With `schema`, the reply is constrained to JSON matching that schema.
+    """
     s = get_settings()
     body: dict[str, Any] = {
         "model": s.ollama_model,
@@ -25,4 +32,6 @@ def chat(messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = No
     }
     if tools:
         body["tools"] = tools
+    if schema:
+        body["format"] = schema
     return post_json(f"{s.ollama_url}/api/chat", body, timeout=300)["message"]

@@ -19,7 +19,7 @@ tool based on what you have found so far. Separate root causes from downstream s
 
 How to investigate:
 - Start with service_overview to see which services have errors or high latency.
-- Use search_traces on an affected service. A failure usually STARTS in the deepest failing call \
+- Use search_traces on the service named in the alert first, then on other affected services. A failure usually STARTS in the deepest failing call \
 (failure_origins); services above it only pass the error up.
 - Check the suspected service with search_logs and container_health. Use deployment_history to see \
 whether something restarted, stopped or changed just before the problem.
@@ -30,9 +30,11 @@ Rules:
 - Every claim must cite evidence IDs (like ev-002) returned by your tool calls. Never invent data.
 - If the evidence is not conclusive, set escalate=true and say what a human should check next.
 
-When done, reply with ONLY a JSON object with these keys:
-component (string or null), cause (string), confidence (0-1), evidence (list of IDs),
-escalate (bool), next_steps (list of strings)."""
+When you have enough evidence, stop calling tools and say so."""
+
+FINAL_PROMPT = """Give your final diagnosis as JSON. Cite only evidence IDs returned by your tool calls. \
+If the evidence does not clearly show one root cause, set escalate=true, use a low confidence and \
+list what a human should check next."""
 
 
 def _extract_json(text: str) -> dict[str, Any] | None:
@@ -59,20 +61,49 @@ def investigate(alert: str, ledger: Ledger | None = None, verbose: bool = False)
         {"role": "user", "content": f"Alert: {alert}"},
     ]
 
+    nudged = False
     for _ in range(settings.max_steps):
         reply = llm.chat(messages, tools.specs())
         messages.append(reply)
         calls = reply.get("tool_calls") or []
         if not calls:
-            return _finalise(reply.get("content", ""), ledger, settings.min_confidence), ledger
+            missing = _checklist_gap(ledger)
+            if missing and not nudged:  # one reminder, then accept the model's decision
+                nudged = True
+                messages.append({"role": "user", "content": missing})
+                continue
+            break
         for call in calls:
             fn = call["function"]
             output = tools.call(fn["name"], fn.get("arguments") or {}, ledger)
             if verbose:
                 print(f"[tool] {fn['name']}({fn.get('arguments')}) -> {output.get('evidence_id', output.get('error'))}")
             messages.append({"role": "tool", "content": json.dumps(output, default=str)})
+    else:
+        messages.append({"role": "user", "content": f"Step limit ({settings.max_steps}) reached."})
 
-    return _escalation(f"No conclusion within {settings.max_steps} steps"), ledger
+    # Final answer with the output format enforced, so it always parses.
+    messages.append({"role": "user", "content": FINAL_PROMPT})
+    final = llm.chat(messages, schema=Diagnosis.model_json_schema())
+    return _finalise(final.get("content", ""), ledger, settings.min_confidence), ledger
+
+
+def _checklist_gap(ledger: Ledger) -> str | None:
+    """A broad infrastructure check is required before concluding."""
+    if not any(e.tool == "container_health" and not e.args.get("name") for e in ledger.items()):
+        return ("Before concluding, call container_health with no name to check every container for "
+                "stopped, restarting, CPU-starved or memory-starved services.")
+    return None
+
+
+def _corroboration_problem(diagnosis: Diagnosis, ledger: Ledger) -> str | None:
+    """Evidence must come from 2+ different tools and mention the blamed component."""
+    cited = [e for e in (ledger.get(i) for i in diagnosis.evidence) if e]
+    if len({e.tool for e in cited}) < 2:
+        return "evidence comes from fewer than two different tools"
+    if diagnosis.component and not any(diagnosis.component in json.dumps(e.summary, default=str) for e in cited):
+        return f"none of the cited evidence mentions {diagnosis.component}"
+    return None
 
 
 def _finalise(content: str, ledger: Ledger, min_confidence: float) -> Diagnosis:
@@ -88,6 +119,10 @@ def _finalise(content: str, ledger: Ledger, min_confidence: float) -> Diagnosis:
     if invented or not diagnosis.evidence:
         diagnosis.escalate = True
         diagnosis.next_steps.insert(0, f"Rejected citations: {invented or 'none given'}")
+    weak = _corroboration_problem(diagnosis, ledger)
+    if weak:
+        diagnosis.confidence = min(diagnosis.confidence, 0.5)
+        diagnosis.next_steps.insert(0, f"Not corroborated: {weak}")
     if diagnosis.confidence < min_confidence:
         diagnosis.escalate = True
     return diagnosis

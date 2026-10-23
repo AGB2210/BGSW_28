@@ -21,6 +21,24 @@ def test_diagnosis_with_invented_evidence_escalates():
     assert _finalise(reply, ledger, 0.6).escalate is True
 
 
+def test_single_tool_evidence_is_not_trusted():
+    ledger = Ledger()
+    ledger.add("service_overview", {}, {"payment": "errors"})
+    reply = '{"component": "payment", "cause": "x", "confidence": 0.95, "evidence": ["ev-001"], "escalate": false}'
+    d = _finalise(reply, ledger, 0.6)
+    assert d.escalate is True and d.confidence <= 0.5
+
+
+def test_corroborated_diagnosis_is_accepted():
+    ledger = Ledger()
+    ledger.add("service_overview", {}, {"payment": "100% errors"})
+    ledger.add("search_logs", {"service": "payment"}, {"payment": "charge failed"})
+    reply = ('{"component": "payment", "cause": "x", "confidence": 0.9, '
+             '"evidence": ["ev-001", "ev-002"], "escalate": false}')
+    d = _finalise(reply, ledger, 0.6)
+    assert d.escalate is False and d.confidence == 0.9
+
+
 def test_low_confidence_escalates():
     ledger = Ledger()
     ledger.add("service_overview", {}, {})

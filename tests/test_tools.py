@@ -4,8 +4,8 @@ from oncall.tools.traces import _attrs, _origins
 
 
 def _span(span_id, parent, error, service="svc", name="op"):
-    return {"trace_id": "t1", "span_id": span_id, "parent_id": parent, "service": service,
-            "name": name, "error": error, "message": "", "ms": 1.0}
+    return {"trace_id": "t1", "span_id": span_id, "parent_id": parent, "service": service, "kind": "server",
+            "callee": "", "name": name, "error": error, "message": "", "ms": 1.0}
 
 
 def test_failure_origin_is_deepest_failing_span():
