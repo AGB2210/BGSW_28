@@ -9,6 +9,7 @@
     POST /api/respond       {alert?}         start an investigation (empty: use the detector)
     POST /api/cancel                         stop the running investigation after its current step
     POST /api/approve       {approved, name} answer the pending approval
+    POST /api/actions/clear                  start a fresh Action API log (old one archived in runs/)
     POST /api/settings      {dry_run?, auto_detect?, kill_switch?}
     POST /api/fault         {incident?, reset?}  inject or reset a practice incident (demo)
 """
@@ -216,6 +217,15 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"result": CONSOLE.start((body.get("alert") or "").strip() or None)})
         elif self.path == "/api/cancel":
             self._json({"result": CONSOLE.cancel()})
+        elif self.path == "/api/actions/clear":
+            if CONSOLE.busy.locked():  # a running incident may still need its entries for rollback
+                return self._json({"result": "an incident is being handled; clear the log afterwards"})
+            try:
+                import httpx
+                archived = httpx.post(f"{actions.URL}/actions/clear", timeout=5).json()["archived"]
+                self._json({"result": f"Action log cleared (kept as runs/{archived})" if archived else "Action log is already empty"})
+            except Exception as exc:
+                self._json({"result": f"Action API unavailable: {type(exc).__name__}"})
         elif self.path == "/api/approve":
             ok = CONSOLE.answer(bool(body.get("approved")), str(body.get("name", "")).strip()[:40])
             self._json({"result": "recorded" if ok else "nothing is waiting for approval"})

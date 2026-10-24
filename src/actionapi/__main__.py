@@ -2,6 +2,7 @@
 
     POST /actions                 {action, target, params, reason, approved_by, dry_run, incident_id}
     POST /actions/<id>/rollback   {approved_by}
+    POST /actions/clear           start a fresh call log (the old one is archived, not deleted)
     GET  /actions                 call log
     GET  /health
 """
@@ -42,6 +43,8 @@ class Handler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             return self._send(400, {"error": "body must be JSON"})
         parts = self.path.strip("/").split("/")
+        if parts == ["actions", "clear"]:
+            return self._send(200, {"archived": actions.clear()})
         if parts == ["actions"]:
             entry = actions.execute(body)
         elif len(parts) == 3 and parts[0] == "actions" and parts[2] == "rollback":

@@ -59,5 +59,13 @@ def test_flag_toggle_can_be_rolled_back(isolated):
     assert isolated[-1] == ("flag", "someFlag", "on")
 
 
+def test_clear_archives_the_log_and_rollback_still_works(isolated):
+    done = actions.execute(req(action="toggle_feature_flag", target="someFlag", params={"variant": "off"}))
+    archived = actions.clear()
+    assert actions.history() == [] and (actions.LOG_FILE.parent / archived).exists()
+    assert actions.rollback(done["id"], "agb")["status"] == "done"
+    assert actions.clear() is not None and actions.clear() is None  # the rollback entry, then nothing
+
+
 def test_scale_is_refused_on_compose():
     assert actions.execute(req(action="scale_service"))["status"] == "refused"

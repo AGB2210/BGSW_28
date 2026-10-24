@@ -46,13 +46,17 @@ oncall baseline               # save healthy metrics once the demo has settled
 ## Running it
 
 ### On-Call Console (web UI)
+On Windows, double-click **`start.bat`**: it starts the Action API and the console in WSL (and
+the demo if it is down), opens http://localhost:8800, and stops both servers on Ctrl+C or when
+its window closes. The same from a WSL shell: `scripts/serve.sh`. Or by hand:
 ```bash
 action-api &                  # the only way to change the system (port 8765)
 oncall-console                # http://localhost:8800
 ```
 The console shows service health, a live feed of every tool the agent calls, the diagnosis with
 its evidence, an **Approve / Reject** card for proposed actions, dry-run and auto-detect toggles,
-a **kill switch**, a **Cancel investigation** button, the Action API log and links to each report.
+a **kill switch**, a **Cancel investigation** button, the Action API log (its **Clear** button
+archives the old log in `runs/` rather than deleting it) and links to each report.
 It also has buttons to inject and reset practice incidents for demos.
 
 ### Command line
@@ -124,6 +128,7 @@ src/faultctl/        practice incident injector
 src/ops/             docker / flag / load-generator operations (Action API and faultctl only)
 src/evaluation/      practice-incident evaluation harness
 scripts/demo.sh      start/stop the demo in the lean setup
+scripts/serve.sh     run the Action API + console until Ctrl+C (start.bat calls it)
 compose.local.yaml   documented memory override
 tests/               unit tests (no live services needed)
 reports/             incident reports produced by the agent

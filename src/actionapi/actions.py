@@ -81,10 +81,23 @@ def _append(entry: dict[str, Any]) -> None:
         f.write(json.dumps(entry) + "\n")
 
 
-def history() -> list[dict[str, Any]]:
+def _archives() -> list[Path]:
+    return sorted(LOG_FILE.parent.glob(f"{LOG_FILE.stem}-*{LOG_FILE.suffix}"))
+
+
+def history(archived: bool = False) -> list[dict[str, Any]]:
+    """The current log; with `archived`, also every log set aside by clear(), oldest first."""
+    files = (_archives() if archived else []) + [LOG_FILE]
+    return [json.loads(line) for f in files if f.exists() for line in f.read_text().splitlines() if line.strip()]
+
+
+def clear() -> str | None:
+    """Start a fresh log. The old one is kept as an archive (it is the audit record), never deleted."""
     if not LOG_FILE.exists():
-        return []
-    return [json.loads(line) for line in LOG_FILE.read_text().splitlines() if line.strip()]
+        return None
+    archive = LOG_FILE.with_name(f"{LOG_FILE.stem}-{datetime.now():%Y%m%d-%H%M%S-%f}{LOG_FILE.suffix}")
+    LOG_FILE.rename(archive)
+    return archive.name
 
 
 def execute(request: dict[str, Any]) -> dict[str, Any]:
@@ -122,7 +135,7 @@ def execute(request: dict[str, Any]) -> dict[str, Any]:
 
 
 def rollback(action_id: str, approved_by: str | None) -> dict[str, Any]:
-    original = next((e for e in history() if e["id"] == action_id), None)
+    original = next((e for e in history(archived=True) if e["id"] == action_id), None)
     entry: dict[str, Any] = {"id": f"act-{uuid.uuid4().hex[:8]}", "at": _now(), "action": "rollback",
                              "target": action_id, "approved_by": approved_by}
     try:

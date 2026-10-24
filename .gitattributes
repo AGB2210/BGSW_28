@@ -1,2 +1,5 @@
 # Shell scripts run inside WSL/Linux and must keep LF line endings
 *.sh text eol=lf
+
+# Windows batch files need CRLF
+*.bat text eol=crlf

@@ -178,7 +178,8 @@ select, input[type=text] { width: 100%; padding: 6px 8px; border: 1px solid var(
     </section>
 
     <section class="card">
-      <h2>Action log <span class="muted">every call to the Action API</span></h2>
+      <h2><span>Action log <span class="muted">every call to the Action API</span></span>
+        <button class="btn" id="clearLogBtn">Clear</button></h2>
       <div class="scroll"><table class="log">
         <thead><tr><th>Time</th><th>Action</th><th>Target</th><th>Status</th><th>By</th></tr></thead>
         <tbody id="logBody"><tr><td colspan="5" class="muted">No actions yet.</td></tr></tbody>
@@ -257,6 +258,10 @@ async function refreshLog() {
     body.append(tr);
   });
 }
+$("#clearLogBtn").onclick = async () => {
+  if (!confirm("Clear the action log? The current entries are kept as an archive file in runs/.")) return;
+  const r = await api("/api/actions/clear", {}); toast(r.result); refreshLog();
+};
 
 // ---------- incident feed ----------
 function setStatus(text, cls) { const p = $("#statusPill"); p.textContent = text; p.className = "pill " + (cls || ""); }
