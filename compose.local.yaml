@@ -10,7 +10,8 @@
 #   flagd            75 MB -> 107 MB binary, 99,439 faults (recommendation timed out on it)
 #   quote            40 MB -> at cap, 22,140 faults
 #   payment         140 MB -> 117 MB binary at cap, 15,809 faults (health check timing out)
-# Every other service had fewer than 1,000 faults and is left untouched.
+#   ad              300 MB -> 294 MB used at baseline (Java), restarted 9 times in 4 hours
+# Every other service stayed well below its cap and is left untouched.
 #
 # What: raise only these memory caps. Nothing else changes: no demo source or
 # config files are edited, GOMEMLIMIT and all other settings stay as shipped, and
@@ -26,3 +27,5 @@ services:
     deploy: {resources: {limits: {memory: 96M}}}
   payment:
     deploy: {resources: {limits: {memory: 256M}}}
+  ad:
+    deploy: {resources: {limits: {memory: 400M}}}

@@ -35,7 +35,13 @@ def chat(
     if schema:
         body["format"] = schema
     body["keep_alive"] = "2m"  # unload soon after the last call even if unload() is never reached
-    return post_json(f"{s.ollama_url}/api/chat", body, timeout=300)["message"]
+    response = post_json(f"{s.ollama_url}/api/chat", body, timeout=300)
+    LAST_STATS.update(prompt_tokens=response.get("prompt_eval_count", 0), output_tokens=response.get("eval_count", 0),
+                      context=s.ollama_num_ctx)
+    return response["message"]
+
+
+LAST_STATS: dict[str, int] = {}  # token counts of the latest call, for diagnostics
 
 
 def unload() -> None:

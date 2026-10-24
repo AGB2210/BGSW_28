@@ -32,6 +32,24 @@ def test_log_pattern_groups_variable_parts():
     assert a == b
 
 
+def test_failures_to_undeployed_hosts_are_ignored(monkeypatch):
+    from oncall.tools import traces
+    spans = [dict(_span("a", "", True, "load-generator", "POST"),
+                  message="ConnectionError: HTTPConnectionPool(host='agent', port=8010)"),
+             dict(_span("b", "", True, "frontend", "GET"), message="upstream failed")]
+    monkeypatch.setattr(traces, "fetch_spans", lambda service, minutes: spans)
+    monkeypatch.setattr(traces, "_deployed", lambda: {"frontend", "cart"})
+    origins = traces.search_traces("frontend")["failure_origins"]
+    assert [o["service"] for o in origins] == ["frontend"]
+
+
+def test_callee_from_rpc_span_name():
+    from oncall.tools.traces import _service_from_rpc
+    assert _service_from_rpc("oteldemo.PaymentService/Charge") == "payment"
+    assert _service_from_rpc("oteldemo.ProductCatalogService/GetProduct") == "product-catalog"
+    assert _service_from_rpc("GET /api/cart") == ""
+
+
 def test_percent_parsing():
     assert _pct("93.5%") == 93.5
     assert _pct("--") == 0.0

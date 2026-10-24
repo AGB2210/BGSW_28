@@ -14,9 +14,10 @@ EXPECTED: dict[str, set[str]] = {
     "ad-high-cpu": {"ad"},
     "ad-gc": {"ad"},
     "homepage-flood": {"load-generator", "frontend", "frontend-proxy"},
-    "image-slow": {"image-provider", "frontend"},
+    "image-slow": {"image-provider", "frontend", "frontend-proxy"},
     "service-down": {"checkout"},
     "cache-down": {"valkey-cart", "valkey"},
     "db-down": {"astronomy-db", "postgres", "postgresql"},
     "cpu-starve": {"product-catalog"},
+    "network-latency": {"cart"},
 }

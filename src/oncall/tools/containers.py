@@ -10,6 +10,9 @@ from typing import Any
 from oncall.tools import tool
 
 LIFECYCLE = {"create", "start", "restart", "die", "kill", "oom", "stop", "destroy", "update", "pause", "unpause"}
+RECENT_RESTART_S = 600
+ALWAYS_BUSY = {"load-generator"}  # runs a headless browser; high CPU is its normal state
+LOW_CPU_LIMIT = 0.25  # cores
 
 
 def docker(*args: str, timeout: float = 20) -> str:
@@ -58,14 +61,21 @@ def container_health(name: str = "") -> dict[str, Any]:
             "cpu_pct": _pct(s.get("CPUPerc", "0%")),
             "mem": s.get("MemUsage", ""),
             "mem_pct": _pct(s.get("MemPerc", "0%")),
+            # A very low CPU limit starves a service while its CPU % looks low, so report the limit itself.
+            "cpu_limit": (c.get("HostConfig", {}).get("NanoCpus") or 0) / 1e9 or None,
         }
+        started = st.get("StartedAt", "")[:19]
+        recently_started = bool(started) and (
+            datetime.now(timezone.utc) - datetime.fromisoformat(started).replace(tzinfo=timezone.utc)
+        ).total_seconds() < RECENT_RESTART_S
         row["problems"] = [p for p, bad in [
             ("not running", st["Status"] != "running"),
             ("unhealthy", row["health"] == "unhealthy"),
-            ("restarted", row["restarts"] > 0),
+            ("restarted recently", row["restarts"] > 0 and recently_started),  # restart counts are cumulative
             ("oom killed", row["oom_killed"]),
-            ("memory near limit", row["mem_pct"] >= 97),  # JVM services idle at 92-96%
-            ("high cpu", row["cpu_pct"] >= 90),
+            # Memory is shown but not flagged: Java services normally sit at 92-98% of their cap.
+            ("high cpu", row["cpu_pct"] >= 90 and n not in ALWAYS_BUSY),
+            (f"cpu limited to {row['cpu_limit'] or 0:.2f} cores", 0 < (row["cpu_limit"] or 0) < LOW_CPU_LIMIT),
         ] if bad]
         rows.append(row)
 

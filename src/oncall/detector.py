@@ -6,6 +6,7 @@ It fires on an error-rate jump, a latency jump, or a service that stops serving.
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -16,14 +17,35 @@ BASELINE_FILE = Path("runs/baseline.json")
 IGNORED = {"load-generator"}
 
 ERROR_JUMP_PCT = 5.0      # error rate must rise by at least this many points ...
-ERROR_MIN_PCT = 5.0       # ... and reach at least this level
+ERROR_MIN_PCT = 5.0       # ... reach at least this level ...
+ERROR_FACTOR = 2.0        # ... be at least this many times the baseline rate ...
+ERROR_MIN_COUNT = 4       # ... and come from at least this many failed requests in the window
+WINDOW_SECONDS = 180
 LATENCY_FACTOR = 3.0      # p95 must be this many times the baseline ...
-LATENCY_MIN_MS = 1000.0   # ... and at least this slow
-SILENT_MIN_RPS = 0.2      # a service this busy at baseline that drops to zero is "silent"
+LATENCY_MIN_MS = 500.0    # ... and at least this slow
+SURGE_FACTOR = 2.0        # request rate this many times the baseline ...
+SURGE_MIN_EXTRA_RPS = 5.0 # ... and at least this many extra requests per second
+SILENT_MIN_RPS = 0.3      # a service this busy at baseline that stops completely is "silent"
+GAP_FRACTION = 0.5        # this share of services silent at once = missing telemetry, not an incident
+
+# Prometheus scrapes every 60 s, so rate() needs a window of several minutes to have
+# enough samples; shorter windows are often empty and look like a silent service.
+WINDOW = "3m"
 
 
-def snapshot(window: str = "2m") -> dict[str, dict[str, Any]]:
-    return {r["service"]: r for r in service_rows(window)}
+class MetricsUnavailable(RuntimeError):
+    """Prometheus did not answer (e.g. the host is overloaded during an incident)."""
+
+
+def snapshot(window: str = WINDOW) -> dict[str, dict[str, Any]]:
+    for attempt in range(2):
+        try:
+            return {r["service"]: r for r in service_rows(window)}
+        except Exception as exc:  # timeouts or connection errors: retry once, then report clearly
+            if attempt:
+                raise MetricsUnavailable(f"metrics backend did not answer: {type(exc).__name__}") from exc
+            time.sleep(5)
+    return {}
 
 
 def save_baseline(window: str = "5m") -> dict[str, dict[str, Any]]:
@@ -37,24 +59,41 @@ def load_baseline() -> dict[str, dict[str, Any]]:
     return json.loads(BASELINE_FILE.read_text()) if BASELINE_FILE.exists() else {}
 
 
-def anomalies(baseline: dict[str, dict], current: dict[str, dict]) -> list[dict[str, Any]]:
+def anomalies(baseline: dict[str, dict], current: dict[str, dict],
+              recent: dict[str, dict] | None = None) -> list[dict[str, Any]]:
+    """Compare current metrics with the baseline.
+
+    `recent` is a longer-window snapshot used to confirm that a missing service is
+    really silent (defaults to `current`).
+    """
+    recent = current if recent is None else recent
+    busy = [s for s, b in baseline.items() if s not in IGNORED and b.get("rps", 0) >= SILENT_MIN_RPS]
+    silent = [s for s in busy if s not in recent]
+    telemetry_gap = bool(busy) and len(silent) / len(busy) >= GAP_FRACTION
+
     found = []
     for svc in sorted(set(baseline) | set(current)):
         if svc in IGNORED:
             continue
         base, now = baseline.get(svc, {}), current.get(svc)
         if now is None:
-            if base.get("rps", 0) >= SILENT_MIN_RPS:
+            if svc in silent and not telemetry_gap:
                 found.append({"service": svc, "kind": "silent", "detail": f"no requests (baseline {base['rps']}/s)"})
             continue
         base_err = base.get("error_pct", 0.0)
-        if now["error_pct"] >= ERROR_MIN_PCT and now["error_pct"] - base_err >= ERROR_JUMP_PCT:
+        failed = now["rps"] * now["error_pct"] / 100 * WINDOW_SECONDS
+        if (now["error_pct"] >= ERROR_MIN_PCT and now["error_pct"] - base_err >= ERROR_JUMP_PCT
+                and now["error_pct"] >= ERROR_FACTOR * base_err and failed >= ERROR_MIN_COUNT):
             found.append({"service": svc, "kind": "errors",
                           "detail": f"error rate {now['error_pct']}% (baseline {base_err}%)"})
         base_p95, p95 = base.get("p95_ms") or 0.0, now.get("p95_ms") or 0.0
         if p95 >= LATENCY_MIN_MS and p95 >= LATENCY_FACTOR * max(base_p95, 1.0):
             found.append({"service": svc, "kind": "latency", "detail": f"p95 {p95:.0f} ms (baseline {base_p95:.0f} ms)"})
-    rank = {"errors": 0, "silent": 1, "latency": 2}
+        base_rps = base.get("rps", 0.0)
+        if base_rps and now["rps"] >= SURGE_FACTOR * base_rps and now["rps"] - base_rps >= SURGE_MIN_EXTRA_RPS:
+            found.append({"service": svc, "kind": "surge",
+                          "detail": f"request rate {now['rps']:.1f}/s (baseline {base_rps:.1f}/s)"})
+    rank = {"errors": 0, "silent": 1, "latency": 2, "surge": 3}
     return sorted(found, key=lambda a: rank[a["kind"]])
 
 
@@ -64,6 +103,10 @@ def alert_text(found: list[dict[str, Any]]) -> str | None:
     return "; ".join(f"{a['service']}: {a['detail']}" for a in found[:4])
 
 
-def check(window: str = "2m") -> str | None:
+def current_anomalies() -> list[dict[str, Any]]:
+    return anomalies(load_baseline(), snapshot(WINDOW))
+
+
+def check() -> str | None:
     """Return an alert line, or None when everything looks like the baseline."""
-    return alert_text(anomalies(load_baseline(), snapshot(window)))
+    return alert_text(current_anomalies())

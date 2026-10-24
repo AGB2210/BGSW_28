@@ -7,6 +7,7 @@ The approver callback is the human gate: nothing changes without its yes.
 from __future__ import annotations
 
 import json
+import re
 import time
 import uuid
 from datetime import datetime, timezone
@@ -49,19 +50,46 @@ def _short(value: object, limit: int = 600) -> str:
     return text if len(text) <= limit else text[:limit] + "…"
 
 
-def verify_recovery(component: str, timeout_s: int = 180, every_s: int = 20,
+def _container_ok(name: str) -> tuple[bool, str]:
+    """Running and its health check passing (a fresh restart is expected after the fix)."""
+    from oncall.tools.containers import container_health
+    try:
+        rows = container_health(name)["containers"]
+    except Exception:
+        return True, f"{name} is not a container"
+    if not rows:
+        return True, f"{name} is not a container"
+    row = rows[0]
+    problems = [p for p in row["problems"] if p != "restarted recently"]
+    if row["health"] == "starting":
+        problems.append("health check starting")
+    return not problems, f"{name}: {row['state']}, health {row['health']}" + (f", {', '.join(problems)}" if problems else "")
+
+
+def alert_services(alert: str) -> list[str]:
+    """Service names an alert line mentions ('svc: detail; svc: detail')."""
+    return re.findall(r"(?:^|;\s*)([\w.-]+):", alert or "")
+
+
+def verify_recovery(component: str, watch: list[str] | None = None, timeout_s: int = 300, every_s: int = 20,
                     should_stop: Callable[[], bool] = lambda: False) -> Verification:
-    """Recovered when the detector no longer flags the component against the baseline."""
+    """Recovered when the component's container is healthy and neither it nor any service from
+    the original alert shows an anomaly against the baseline any more."""
+    watch = sorted({component, *(watch or [])})
     checks = []
     deadline = time.time() + timeout_s
     while True:
         if should_stop():
             raise Cancelled("recovery check cancelled by the operator")
-        found = [a for a in detector.anomalies(detector.load_baseline(), detector.snapshot("1m"))
-                 if a["service"] == component]
-        checks.append(f"{_now():%H:%M:%S} " + ("; ".join(a["detail"] for a in found) if found
-                                               else f"{component} back to baseline"))
-        if not found:
+        container_ok, container_note = _container_ok(component)
+        try:
+            found = [a for a in detector.current_anomalies() if a["service"] in watch]
+            metrics_note = ("; ".join(f"{a['service']} {a['detail']}" for a in found) if found
+                            else f"{', '.join(watch)} back to baseline")
+        except detector.MetricsUnavailable as exc:
+            found, metrics_note = None, f"metrics unavailable ({exc}); checking again"
+        checks.append(f"{_now():%H:%M:%S} {container_note}; {metrics_note}")
+        if container_ok and found == []:
             return Verification(recovered=True, checks=checks)
         if time.time() >= deadline:
             return Verification(recovered=False, checks=checks)
@@ -146,7 +174,8 @@ def _respond(alert, approver, emit, dry_run, stop, incident_id, timeline, log) -
         return _finish(report, timeline, emit)
 
     log(f"Verifying recovery of {proposal.target}", "verifying", {"target": proposal.target})
-    report.verification = verify_recovery(diagnosis.component or proposal.target, should_stop=stop)
+    report.verification = verify_recovery(diagnosis.component or proposal.target, alert_services(alert),
+                                          should_stop=stop)
     if report.verification.recovered:
         report.status = "resolved"
         log("Recovered: back to baseline", "verified", {"recovered": True})

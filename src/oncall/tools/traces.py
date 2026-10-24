@@ -6,6 +6,8 @@ spans carry `feature_flag.*` events that would reveal the flag settings.
 
 from __future__ import annotations
 
+import re
+import subprocess
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -56,8 +58,10 @@ def fetch_spans(service: str, minutes: int, depth: int = 20) -> list[dict[str, A
                 events = [e for e in sp.get("events", []) if not e["name"].startswith("feature_flag")]
                 exc = next((_attrs(e.get("attributes", [])) for e in events if e["name"] == "exception"), {})
                 attrs = _attrs(sp.get("attributes", []))
-                callee = (attrs.get("rpc.service") or attrs.get("peer.service") or attrs.get("server.address")
-                          or attrs.get("net.peer.name") or attrs.get("db.system") or "")
+                # Prefer the host name (it matches the container name) over the RPC interface name.
+                host = str(attrs.get("server.address") or attrs.get("net.peer.name") or "").split(":")[0]
+                callee = (host if host and not host[0].isdigit() else "") or attrs.get("peer.service") \
+                    or _service_from_rpc(sp["name"]) or attrs.get("rpc.service") or attrs.get("db.system") or ""
                 spans.append({
                     "trace_id": sp["traceId"],
                     "span_id": sp["spanId"],
@@ -71,6 +75,26 @@ def fetch_spans(service: str, minutes: int, depth: int = 20) -> list[dict[str, A
                     "ms": (int(sp["endTimeUnixNano"]) - int(sp["startTimeUnixNano"])) / 1e6,
                 })
     return spans
+
+
+_HOST_IN_ERROR = re.compile(r"host='([\w.-]+)'")
+_RPC_NAME = re.compile(r"^(?:[\w]+\.)?([A-Z]\w*?)Service/\w+$")
+
+
+def _service_from_rpc(span_name: str) -> str:
+    """'oteldemo.ProductCatalogService/GetProduct' -> 'product-catalog' (the demo's naming)."""
+    m = _RPC_NAME.match(span_name)
+    return re.sub(r"(?<!^)(?=[A-Z])", "-", m.group(1)).lower() if m else ""
+
+
+def _deployed() -> set[str]:
+    """Container names in this deployment (empty if Docker is unavailable)."""
+    try:
+        out = subprocess.run(["docker", "ps", "-a", "--format", "{{.Names}}"], capture_output=True, text=True,
+                             timeout=10, check=True).stdout
+        return set(out.split())
+    except (OSError, subprocess.SubprocessError):
+        return set()
 
 
 def _origins(spans: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -102,8 +126,12 @@ def search_traces(service: str, minutes: int = 5) -> dict[str, Any]:
     traces = {s["trace_id"] for s in spans}
     failed = {s["trace_id"] for s in spans if s["error"]}
     has_child = {s["parent_id"] for s in spans}
+    deployed = _deployed()
     groups: dict[tuple[str, str, str, str, bool], list[str]] = defaultdict(list)
     for s in _origins(spans):
+        host = _HOST_IN_ERROR.search(s["message"])
+        if deployed and host and host.group(1) not in deployed:
+            continue  # calls to an optional service this deployment does not run: permanent background noise
         # A failed outgoing call with no span from the other side means the callee never answered.
         no_answer = s["kind"] == "client" and s["span_id"] not in has_child
         groups[(s["service"], s["name"], s["message"][:200], s["callee"], no_answer)].append(s["trace_id"])
@@ -133,4 +161,13 @@ def search_traces(service: str, minutes: int = 5) -> dict[str, Any]:
         "failure_origins": origins,
         "services_with_errors": dict(Counter(s["service"] for s in spans if s["error"]).most_common(6)),
         "slowest_operations": slowest,
+        "calls": call_edges(spans),
     }
+
+
+def call_edges(spans: list[dict[str, Any]]) -> list[str]:
+    """Service-to-service calls seen in these traces, as 'caller→callee'."""
+    by_id = {s["span_id"]: s for s in spans}
+    edges = {f"{by_id[s['parent_id']]['service']}→{s['service']}" for s in spans
+             if s["parent_id"] in by_id and by_id[s["parent_id"]]["service"] != s["service"]}
+    return sorted(edges)[:25]

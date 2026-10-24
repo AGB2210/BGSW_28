@@ -42,6 +42,15 @@ def test_infra_incidents_record_and_reverse(fake):
                    ("cpus", "product-catalog", 0.0), ("start", "cart")]
 
 
+def test_network_delay_is_removed_by_reset(fake, monkeypatch):
+    log, _ = fake
+    monkeypatch.setattr(incidents.docker, "add_delay", lambda c, ms: log.append(("delay", c, ms)))
+    monkeypatch.setattr(incidents.docker, "clear_delay", lambda c: log.append(("clear", c)))
+    incidents.inject("network-latency")
+    incidents.reset()
+    assert log == [("delay", "cart", 2000), ("clear", "cart")]
+
+
 def test_unknown_incident_raises(fake):
     with pytest.raises(KeyError):
         incidents.inject("does-not-exist")

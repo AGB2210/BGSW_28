@@ -26,6 +26,7 @@ class Incident:
     flag: tuple[str, str] | None = None  # (flag name, variant)
     stop: str | None = None  # container to stop
     cpus: float | None = None  # CPU limit for the target container
+    delay_ms: int | None = None  # network delay on the target container's traffic
     default_target: str | None = None
 
 
@@ -45,6 +46,8 @@ CATALOGUE = {i.id: i for i in [
     Incident("cache-down", "infrastructure", "The cart cache (Valkey) is stopped", stop="valkey-cart"),
     Incident("db-down", "infrastructure", "The product database (PostgreSQL) is stopped", stop="astronomy-db"),
     Incident("cpu-starve", "infrastructure", "A service is starved of CPU", cpus=0.05, default_target="product-catalog"),
+    Incident("network-latency", "infrastructure", "Network latency on one service's traffic (2 s)",
+             delay_ms=2000, default_target="cart"),
 ]}
 
 
@@ -81,6 +84,10 @@ def inject(incident_id: str, target: str | None = None) -> dict[str, Any]:
         container = target or incident.default_target
         record["changes"].append({"type": "cpus", "container": container, "previous_nano": docker.nano_cpus(container)})
         docker.set_cpus(container, incident.cpus)
+    if incident.delay_ms is not None:
+        container = target or incident.default_target
+        docker.add_delay(container, incident.delay_ms)
+        record["changes"].append({"type": "delay", "container": container})
 
     state["active"].append(record)
     _save(state)
@@ -102,6 +109,9 @@ def reset() -> list[str]:
             elif change["type"] == "cpus":
                 docker.set_cpus(change["container"], change["previous_nano"] / 1e9)
                 done.append(f"cpu limit restored on {change['container']}")
+            elif change["type"] == "delay":
+                docker.clear_delay(change["container"])
+                done.append(f"network delay removed from {change['container']}")
     if FLAG_BACKUP.exists():
         flags.restore(FLAG_BACKUP)
         FLAG_BACKUP.unlink()

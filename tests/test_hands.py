@@ -58,7 +58,7 @@ def test_rejected_action_changes_nothing(loop):
 
 
 def test_approved_action_runs_and_verifies(loop, monkeypatch):
-    monkeypatch.setattr(incident, "verify_recovery", lambda c, **kw: Verification(recovered=True, checks=["ok"]))
+    monkeypatch.setattr(incident, "verify_recovery", lambda c, *a, **kw: Verification(recovered=True, checks=["ok"]))
     events = []
     report = incident.respond("alert", lambda p, r: (True, "agb"), lambda k, d: events.append(k), dry_run=False)
     assert report.status == "resolved" and loop == [("execute", "valkey-cart", "agb", False)]
@@ -67,7 +67,7 @@ def test_approved_action_runs_and_verifies(loop, monkeypatch):
 
 
 def test_failed_recovery_rolls_back_and_escalates(loop, monkeypatch):
-    monkeypatch.setattr(incident, "verify_recovery", lambda c, **kw: Verification(recovered=False, checks=["still bad"]))
+    monkeypatch.setattr(incident, "verify_recovery", lambda c, *a, **kw: Verification(recovered=False, checks=["still bad"]))
     report = incident.respond("alert", lambda p, r: (True, "agb"), dry_run=False)
     assert report.status == "escalated" and report.verification.rolled_back is True
     assert loop[-1] == ("rollback", "act-1")
@@ -104,6 +104,37 @@ def test_agent_stops_before_calling_the_model(monkeypatch):
     monkeypatch.setattr(agent.llm, "unload", lambda: None)
     with pytest.raises(agent.Cancelled):
         agent.investigate("alert", should_stop=lambda: True)
+
+
+def test_alert_services_are_parsed():
+    assert incident.alert_services("frontend: error rate 6.4% (baseline 0.0%); recommendation: error rate 12.5%") \
+        == ["frontend", "recommendation"]
+
+
+def test_recovery_waits_for_container_and_alerting_services(monkeypatch):
+    states = iter([(False, "astronomy-db: exited"), (True, "astronomy-db: running"), (True, "astronomy-db: running")])
+    anomalies = iter([[], [{"service": "frontend", "detail": "error rate 6%"}], []])
+    monkeypatch.setattr(incident, "_container_ok", lambda name: next(states))
+    monkeypatch.setattr(incident.detector, "current_anomalies", lambda: next(anomalies))
+    monkeypatch.setattr(incident.time, "sleep", lambda s: None)
+    v = incident.verify_recovery("astronomy-db", ["frontend"], timeout_s=600, every_s=1)
+    assert v.recovered is True and len(v.checks) == 3
+
+
+def test_recovery_check_survives_metrics_outage(monkeypatch):
+    calls = iter([incident.detector.MetricsUnavailable("timeout"), []])
+
+    def anomalies():
+        result = next(calls)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    monkeypatch.setattr(incident, "_container_ok", lambda name: (True, f"{name}: running"))
+    monkeypatch.setattr(incident.detector, "current_anomalies", anomalies)
+    monkeypatch.setattr(incident.time, "sleep", lambda s: None)
+    v = incident.verify_recovery("cart", [], timeout_s=600, every_s=1)
+    assert v.recovered is True and "metrics unavailable" in v.checks[0]
 
 
 def test_dry_run_reports_without_verifying(loop):

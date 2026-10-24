@@ -25,7 +25,11 @@ def wait_until(check, timeout_s: int, every_s: int = 20):
     """Poll `check()` until it returns something truthy or the timeout passes."""
     deadline = time.time() + timeout_s
     while time.time() < deadline:
-        result = check()
+        try:
+            result = check()
+        except Exception as exc:  # e.g. metrics briefly unavailable while an incident loads the host
+            print(f"  (check failed: {type(exc).__name__}; retrying)")
+            result = None
         if result:
             return result
         time.sleep(every_s)
@@ -33,16 +37,24 @@ def wait_until(check, timeout_s: int, every_s: int = 20):
 
 
 def score(component: str | None, escalate: bool, expected: set[str]) -> str:
-    hit = bool(component) and any(e in component.lower() for e in expected)
+    """'correct' only for an exact expected component (substring matching once let
+    'load-generator' count as 'ad'); otherwise 'escalated' if the agent escalated, else 'wrong'."""
+    hit = bool(component) and component.lower() in expected
     if hit:
         return "correct"
     return "escalated" if escalate else "wrong"
 
 
+def _calm() -> bool:
+    """No metric anomaly and no container with problems (e.g. a restart left by the previous incident)."""
+    from oncall.tools.containers import container_health
+    return detector.check() is None and not container_health()["with_problems"]
+
+
 def run_one(incident_id: str, detect_timeout: int, settle_timeout: int) -> dict:
     print(f"\n=== {incident_id}")
     incidents.reset()
-    calm = wait_until(lambda: detector.check() is None, settle_timeout)
+    calm = wait_until(_calm, settle_timeout)
     if not calm:
         print("  warning: baseline not calm before injection")
 
@@ -62,6 +74,7 @@ def run_one(incident_id: str, detect_timeout: int, settle_timeout: int) -> dict:
         "alert": alert,
         "diagnosis": diagnosis.model_dump(),
         "tools_used": [e.tool for e in ledger.items()],
+        "evidence": json.loads(ledger.to_json()),
         "investigation_s": round(time.time() - t0),
         "score": score(diagnosis.component, diagnosis.escalate, EXPECTED[incident_id]),
     }
@@ -73,7 +86,7 @@ def run_one(incident_id: str, detect_timeout: int, settle_timeout: int) -> dict:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="evaluation")
     parser.add_argument("incidents", nargs="*", help="default: all practice incidents")
-    parser.add_argument("--detect-timeout", type=int, default=240)
+    parser.add_argument("--detect-timeout", type=int, default=300)
     parser.add_argument("--settle-timeout", type=int, default=420)
     args = parser.parse_args(argv)
 

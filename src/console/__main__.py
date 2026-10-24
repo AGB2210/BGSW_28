@@ -102,7 +102,11 @@ class Console:
     def start(self, alert: str | None) -> str:
         if not self.busy.acquire(blocking=False):
             return "an incident is already being handled"
-        alert = alert or detector.check()
+        try:
+            alert = alert or detector.check()
+        except detector.MetricsUnavailable as exc:
+            self.busy.release()
+            return f"cannot read metrics right now ({exc}); type the alert text to investigate anyway"
         if not alert:
             self.busy.release()
             return "no anomaly against the baseline; nothing to investigate"
@@ -125,7 +129,11 @@ class Console:
         while True:
             time.sleep(20)
             if self.auto_detect and not self.busy.locked():
-                alert = detector.check()
+                try:
+                    alert = detector.check()
+                except detector.MetricsUnavailable as exc:
+                    self.hub.publish("error", {"event": f"Auto-detect skipped a check: {exc}"})
+                    continue
                 if alert:
                     self.start(alert)
 
@@ -178,9 +186,11 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/api/state":
             self._json(CONSOLE.state())
         elif self.path == "/api/services":
-            baseline = detector.load_baseline()
-            current = detector.snapshot("2m")
-            self._json({"services": list(current.values()), "anomalies": detector.anomalies(baseline, current)})
+            try:
+                current = detector.snapshot()
+                self._json({"services": list(current.values()), "anomalies": detector.current_anomalies()})
+            except detector.MetricsUnavailable as exc:
+                self._json({"services": [], "anomalies": [], "error": str(exc)})
         elif self.path == "/api/actions":
             try:
                 import httpx

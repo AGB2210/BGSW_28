@@ -43,5 +43,31 @@ def nano_cpus(name: str) -> int:
 
 
 def set_cpus(name: str, cpus: float) -> None:
-    """Limit a container's CPU. 0 removes the limit."""
+    """Limit a container's CPU. 0 removes the limit.
+
+    `docker update --cpus 0` is silently ignored, so "no limit" is set as a limit of
+    every available core, which never throttles.
+    """
+    if cpus <= 0:
+        cpus = float(run("info", "--format", "{{.NCPU}}").strip() or 1)
     run("update", "--cpus", str(cpus), name)
+
+
+NETSHOOT = "nicolaka/netshoot:v0.13"
+
+
+def _tc(name: str, *args: str) -> None:
+    """Run `tc` inside a container's network namespace via a short-lived helper container."""
+    run("run", "--rm", "--network", f"container:{name}", "--cap-add", "NET_ADMIN", NETSHOOT, "tc", *args)
+
+
+def add_delay(name: str, delay_ms: int) -> None:
+    """Delay all traffic leaving the container (stays until clear_delay)."""
+    _tc(name, "qdisc", "replace", "dev", "eth0", "root", "netem", "delay", f"{delay_ms}ms")
+
+
+def clear_delay(name: str) -> None:
+    try:
+        _tc(name, "qdisc", "del", "dev", "eth0", "root")
+    except Exception:
+        pass  # already clear (e.g. the container was recreated)
