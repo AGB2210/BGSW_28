@@ -101,6 +101,19 @@ def test_stopped_container_found_by_name_and_alert_corroborate():
     reply = '{"component": "checkout", "cause": "stopped", "confidence": 0.9, "evidence": ["ev-002"], "escalate": false}'
     d = _finalise(reply, ledger, 0.6, alert="checkout: no requests (baseline 0.6/s)")
     assert d.component == "checkout" and d.escalate is False
+    assert d.category == "infrastructure"  # the model left it out; the container evidence decides
+
+
+@pytest.mark.parametrize("problems, category", [
+    (["cpu limited to 0.05 cores"], "infrastructure"),
+    (["network delay 2s"], "infrastructure"),
+    (["high cpu"], "unknown"),  # could be the application's own fault: left as the model said
+])
+def test_category_follows_the_container_evidence(problems, category):
+    ledger = Ledger()
+    ledger.add("container_health", {}, {"with_problems": [{"name": "cart", "problems": problems}], "healthy": []})
+    reply = '{"component": "cart", "cause": "slow", "confidence": 0.9, "evidence": ["ev-001"], "escalate": false}'
+    assert _finalise(reply, ledger, 0.6, alert="cart: p95 4000 ms (baseline 2 ms)").category == category
 
 
 def test_lone_troubled_container_replaces_an_unsupported_pick():

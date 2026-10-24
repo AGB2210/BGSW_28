@@ -120,7 +120,7 @@ def reset() -> list[str]:
     return done
 
 
-def baseline_load(users: int = 5) -> None:
-    """Put the load generator back to the demo's default user count."""
+def baseline_load(users: int = loadgen.DEFAULT_USERS) -> None:
+    """Put the load generator back to the demo's default load (a restart; see loadgen.restore)."""
     if loadgen.user_count() != users:
-        loadgen.set_users(users)
+        loadgen.restore(users)

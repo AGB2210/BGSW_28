@@ -163,7 +163,7 @@ def rollback(action_id: str, approved_by: str | None) -> dict[str, Any]:
             flags.set_variant(original["target"], undo["previous_variant"])
             entry["result"] = f"flag {original['target']} back to {undo['previous_variant']}"
         elif "previous_users" in undo:
-            loadgen.set_users(undo["previous_users"])
+            loadgen.restore(undo["previous_users"])
             entry["result"] = f"load generator back to {undo['previous_users']} users"
         elif "previous_nano_cpus" in undo:
             docker.set_cpus(original["target"], undo["previous_nano_cpus"] / 1e9)

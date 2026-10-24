@@ -84,3 +84,11 @@ def test_cpu_limit_action_needs_a_limit_and_spares_the_telemetry_stack(isolated)
     assert actions.execute(req(action="remove_cpu_limit", target="checkout"))["status"] == "refused"
     assert actions.execute(req(action="remove_cpu_limit", target="jaeger"))["status"] == "refused"
     assert isolated == []
+
+
+def test_throttle_rollback_restores_the_default_load_by_restarting(isolated, monkeypatch):
+    monkeypatch.setattr(actions.loadgen, "user_count", lambda: 5)
+    monkeypatch.setattr(actions.loadgen, "set_users", lambda users, spawn_rate=1.0: isolated.append(("users", users)))
+    done = actions.execute(req(action="throttle_load_generator", target="load-generator", params={"users": 1}))
+    assert actions.rollback(done["id"], "agb")["status"] == "done"
+    assert isolated == [("users", 1), ("restart", "load-generator")]  # a restart brings the browser user back

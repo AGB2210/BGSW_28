@@ -371,6 +371,12 @@ def _finalise(content: str, ledger: Ledger, min_confidence: float, alert: str = 
                 diagnosis.next_steps.append(f"Model's original explanation: {diagnosis.cause}")
                 diagnosis.cause = f"{culprit}: {', '.join(problems)}."
 
+    # The category follows the container evidence when the blamed container itself is broken
+    # (high CPU or a recent restart can come from the application, so those do not count).
+    problems = _container_rows(ledger).get(diagnosis.component or "", {}).get("problems", [])
+    if any(p in STOPPED or p == "unhealthy" or p.startswith(("cpu limited", "network delay")) for p in problems):
+        diagnosis.category = "infrastructure"
+
     invented = ledger.missing(diagnosis.evidence)
     if invented or not diagnosis.evidence:
         diagnosis.escalate = True

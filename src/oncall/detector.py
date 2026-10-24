@@ -17,6 +17,9 @@ from oncall.tools.metrics import service_rows
 BASELINE_FILE = Path("runs/baseline.json")
 # The load generator only reports client-side symptoms; it is never the alerting service.
 IGNORED = {"load-generator"}
+# Browser-side telemetry comes from a single simulated browser user and drops out on its own,
+# so its silence is not an incident (its errors and latency still count).
+NEVER_SILENT = {"frontend-web"}
 
 ERROR_JUMP_PCT = 5.0      # error rate must rise by at least this many points ...
 ERROR_MIN_PCT = 5.0       # ... reach at least this level ...
@@ -69,7 +72,7 @@ def anomalies(baseline: dict[str, dict], current: dict[str, dict],
     really silent (defaults to `current`).
     """
     recent = current if recent is None else recent
-    busy = [s for s, b in baseline.items() if s not in IGNORED and b.get("rps", 0) >= SILENT_MIN_RPS]
+    busy = [s for s, b in baseline.items() if s not in IGNORED | NEVER_SILENT and b.get("rps", 0) >= SILENT_MIN_RPS]
     silent = [s for s in busy if s not in recent]
     telemetry_gap = bool(busy) and len(silent) / len(busy) >= GAP_FRACTION
 
