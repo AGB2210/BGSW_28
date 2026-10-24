@@ -46,6 +46,13 @@ table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th, td { text-align: left; padding: 4px 4px; border-bottom: 1px solid var(--line); }
 th { font: 600 11px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 td.n, th.n { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+th .sort { all: unset; cursor: pointer; display: inline-flex; gap: 3px; align-items: center; border-radius: 3px; }
+th .sort:hover { color: var(--fg); }
+th .sort:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+th .sort::after { content: "↕"; opacity: .35; font-size: 10px; }
+th[aria-sort="ascending"] .sort, th[aria-sort="descending"] .sort { color: var(--fg); }
+th[aria-sort="ascending"] .sort::after { content: "▲"; opacity: 1; }
+th[aria-sort="descending"] .sort::after { content: "▼"; opacity: 1; }
 tr:last-child td { border-bottom: 0; }
 tr.hot td { color: var(--bad); font-weight: 600; }
 
@@ -132,8 +139,8 @@ select, input[type=text] { width: 100%; padding: 6px 8px; border: 1px solid var(
 
     <section class="card">
       <h2>Services <span class="muted mono" id="svcTime"></span></h2>
-      <div class="scroll"><table>
-        <thead><tr><th>Service</th><th class="n">req/s</th><th class="n">err %</th><th class="n">p95 ms</th></tr></thead>
+      <div class="scroll"><table id="svcTable">
+        <thead><tr><th data-key="service">Service</th><th class="n" data-key="rps" data-num>req/s</th><th class="n" data-key="error_pct" data-num>err %</th><th class="n" data-key="p95_ms" data-num>p95 ms</th></tr></thead>
         <tbody id="svcBody"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
       </table></div>
     </section>
@@ -180,8 +187,8 @@ select, input[type=text] { width: 100%; padding: 6px 8px; border: 1px solid var(
     <section class="card">
       <h2><span>Action log <span class="muted">every call to the Action API</span></span>
         <button class="btn" id="clearLogBtn">Clear</button></h2>
-      <div class="scroll"><table class="log">
-        <thead><tr><th>Time</th><th>Action</th><th>Target</th><th>Status</th><th>By</th></tr></thead>
+      <div class="scroll"><table class="log" id="logTable">
+        <thead><tr><th data-key="at">Time</th><th data-key="action">Action</th><th data-key="target">Target</th><th data-key="status">Status</th><th data-key="approved_by">By</th></tr></thead>
         <tbody id="logBody"><tr><td colspan="5" class="muted">No actions yet.</td></tr></tbody>
       </table></div>
     </section>
@@ -231,26 +238,70 @@ $("#killBtn").onclick = () => api("/api/settings", { kill_switch: !state.kill_sw
 $("#injectBtn").onclick = async () => { const r = await api("/api/fault", { incident: $("#faultSelect").value }); toast(r.error || "Injected"); refreshState(); };
 $("#resetBtn").onclick = async () => { const r = await api("/api/fault", { reset: true }); toast(r.error || "Reset done"); refreshState(); };
 
+// ---------- sortable tables ----------
+// Click a column header to sort by it; click again to reverse. Numbers start largest first.
+// The choice is remembered per table and survives the periodic refresh.
+const sorts = {};
+function sortable(tableId, render) {
+  try { sorts[tableId] = JSON.parse(localStorage.getItem("sort:" + tableId)); } catch { sorts[tableId] = null; }
+  const ths = [...document.querySelectorAll(`#${tableId} th[data-key]`)];
+  const mark = () => ths.forEach(th => {
+    const s = sorts[tableId];
+    if (s && s.key === th.dataset.key) th.setAttribute("aria-sort", s.dir > 0 ? "ascending" : "descending");
+    else th.removeAttribute("aria-sort");
+  });
+  ths.forEach(th => {
+    const b = el("button", "sort", th.textContent); b.type = "button"; b.title = "Sort by " + th.textContent;
+    th.textContent = ""; th.append(b);
+    b.onclick = () => {
+      const s = sorts[tableId], key = th.dataset.key;
+      sorts[tableId] = s && s.key === key ? { key, dir: -s.dir } : { key, dir: th.hasAttribute("data-num") ? -1 : 1 };
+      try { localStorage.setItem("sort:" + tableId, JSON.stringify(sorts[tableId])); } catch {}
+      mark(); render();
+    };
+  });
+  mark();
+}
+function sortRows(tableId, rows) {
+  const s = sorts[tableId];
+  if (!s) return rows;
+  return rows.slice().sort((a, b) => {
+    const x = a[s.key], y = b[s.key];
+    if (x == null || x === "") return 1;   // empty values always last
+    if (y == null || y === "") return -1;
+    return (typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y))) * s.dir;
+  });
+}
+
 // ---------- services ----------
+let svcData = { services: [], anomalies: [] };
 async function refreshServices() {
-  let data; try { data = await api("/api/services"); } catch { return; }
-  const hot = new Set(data.anomalies.map(a => a.service));
+  try { svcData = await api("/api/services"); } catch { return; }
+  renderServices();
+  $("#svcTime").textContent = new Date().toLocaleTimeString([], { hour12: false });
+}
+function renderServices() {
+  const hot = new Set(svcData.anomalies.map(a => a.service));
   const body = $("#svcBody"); body.textContent = "";
-  data.services.filter(s => s.service !== "load-generator").forEach(s => {
+  sortRows("svcTable", svcData.services.filter(s => s.service !== "load-generator")).forEach(s => {
     const tr = el("tr", hot.has(s.service) ? "hot" : "");
     tr.append(el("td", null, s.service), el("td", "n", s.rps.toFixed(2)), el("td", "n", s.error_pct.toFixed(1)), el("td", "n", s.p95_ms == null ? "–" : Math.round(s.p95_ms)));
     body.append(tr);
   });
-  if (!data.services.length) { const tr = el("tr"); const td = el("td", "muted", "No traffic data"); td.colSpan = 4; tr.append(td); body.append(tr); }
-  $("#svcTime").textContent = new Date().toLocaleTimeString([], { hour12: false });
+  if (!svcData.services.length) { const tr = el("tr"); const td = el("td", "muted", "No traffic data"); td.colSpan = 4; tr.append(td); body.append(tr); }
 }
+sortable("svcTable", renderServices);
 
 // ---------- action log ----------
+let logRows = [];
 async function refreshLog() {
-  let rows; try { rows = await api("/api/actions"); } catch { return; }
+  try { logRows = await api("/api/actions"); } catch { return; }
+  renderLog();
+}
+function renderLog() {
   const body = $("#logBody"); body.textContent = "";
-  if (!rows.length) { const tr = el("tr"); const td = el("td", "muted", "No actions yet."); td.colSpan = 5; tr.append(td); body.append(tr); return; }
-  rows.slice().reverse().forEach(r => {
+  if (!logRows.length) { const tr = el("tr"); const td = el("td", "muted", "No actions yet."); td.colSpan = 5; tr.append(td); body.append(tr); return; }
+  sortRows("logTable", logRows.slice().reverse()).forEach(r => {
     const tr = el("tr");
     tr.title = r.result || "";
     tr.append(el("td", "mono", (r.at || "").slice(11, 19)), el("td", "mono", r.action), el("td", "mono", r.target || ""),
@@ -258,6 +309,7 @@ async function refreshLog() {
     body.append(tr);
   });
 }
+sortable("logTable", renderLog);
 $("#clearLogBtn").onclick = async () => {
   if (!confirm("Clear the action log? The current entries are kept as an archive file in runs/.")) return;
   const r = await api("/api/actions/clear", {}); toast(r.result); refreshLog();
