@@ -3,8 +3,7 @@
 # Used by start.bat; also works on its own: scripts/serve.sh
 #
 # Ends on Ctrl+C, when the terminal window is closed, or when either server exits.
-# The demo containers are started if they are not running, and left running afterwards
-# (scripts/demo.sh down stops them).
+# The demo containers are separate: demo.bat (scripts/demo.sh run) starts and stops them.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -30,10 +29,10 @@ if servers >/dev/null; then
   kill $(servers) 2>/dev/null; sleep 2
 fi
 
-running=$(docker ps --filter status=running -q | wc -l)
+running=$(docker ps --filter status=running -q 2>/dev/null | wc -l)
 if [ "$running" -lt 22 ]; then
-  echo "Starting the demo containers ($running of 22 running)..."
-  scripts/demo.sh up >/dev/null || { echo "Could not start the demo; see scripts/demo.sh up"; exit 1; }
+  echo "Note: only $running of 22 demo containers are running. Start the demo with demo.bat"
+  echo "(or scripts/demo.sh run) so the agent has something to watch."
 fi
 
 trap stop INT TERM HUP EXIT

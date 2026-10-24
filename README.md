@@ -54,17 +54,18 @@ curl -fsSL https://get.docker.com | sudo sh
 sudo usermod -aG docker $USER
 ```
 
-**3. The OpenTelemetry Demo, release 3.1.0**
+**3. The OpenTelemetry Demo (release 3.1.0) and its images.** `demo.bat` does this for you the
+first time it runs (step 7). To do it ahead of time instead, run from the project folder:
 
 ```bash
 git clone --branch 3.1.0 --depth 1 https://github.com/open-telemetry/opentelemetry-demo.git ~/opentelemetry-demo
+bash scripts/demo.sh pull
 ```
 
-**4. This project and its demo images.** Run these from the project folder.
+**4. Helper image.** Only needed for the network-latency practice incident.
 
 ```bash
-bash scripts/demo.sh pull
-docker pull nicolaka/netshoot:v0.13      # only needed for the network-latency practice incident
+docker pull nicolaka/netshoot:v0.13
 ```
 
 **5. The local model**
@@ -83,10 +84,10 @@ python3 -m venv ~/.venvs/oncall
 cp .env.example .env
 ```
 
-**7. First start**
+**7. First start.** Double-click **`demo.bat`** and wait until it shows `22/22` containers ready.
+The first time, it downloads about 10 GB. Then, in WSL:
 
 ```bash
-bash scripts/demo.sh up
 ~/.venvs/oncall/bin/oncall check        # every backend should say ok
 ```
 
@@ -98,13 +99,16 @@ Wait about 5 minutes for the shop's traffic to settle, then save what "healthy" 
 
 ## Starting and stopping
 
-**Windows:** double-click **`start.bat`** in the project folder.
-It starts the console and the Action API, starts the demo if it is not running, and opens
-http://localhost:8800. To stop, press **Ctrl+C** or close the window.
+Two buttons in the project folder. Each one keeps its window open while it runs. To stop it,
+press **Ctrl+C** or close the window.
 
-**Linux or a WSL shell:** run `scripts/serve.sh`, and press Ctrl+C to stop.
+| Button | Starts | Linux / WSL shell |
+|---|---|---|
+| **`demo.bat`** | WSL and the demo shop with its telemetry (22 containers). Waits until they are healthy, then shows the links. | `scripts/demo.sh run` |
+| **`start.bat`** | The console and the Action API, and opens http://localhost:8800 | `scripts/serve.sh` |
 
-The demo keeps running after you stop the console. To stop the demo itself, run `bash scripts/demo.sh down`.
+Start `demo.bat` first. Closing its window stops the containers, and they stay stopped until
+you start them again.
 
 ## Using the console
 
@@ -205,7 +209,8 @@ src/actionapi/     the Action API
 src/faultctl/      practice incidents
 src/evaluation/    scores the agent on practice incidents
 scripts/           demo.sh (start/stop the demo), serve.sh (start/stop the console)
-start.bat          one-click start on Windows
+demo.bat           one-click start/stop of the demo containers (Windows)
+start.bat          one-click start/stop of the console (Windows)
 docs/              architecture
 tests/             unit tests: python -m pytest
 ```
