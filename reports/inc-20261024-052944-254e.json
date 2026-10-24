@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "inc-20261024-052944-254e",
+  "alert": "frontend-web: no requests (baseline 11.607/s)",
+  "detected_at": "2026-10-24T05:29:44.915651Z",
+  "status": "escalated",
+  "diagnosis": {
+    "component": "frontend-proxy",
+    "category": "unknown",
+    "cause": "slow routing (router frontend egress)",
+    "confidence": 0.5,
+    "evidence": [
+      "ev-001",
+      "ev-002",
+      "ev-003",
+      "ev-004"
+    ],
+    "escalate": true,
+    "next_steps": [
+      "Not corroborated: only 0 source(s) show a problem in frontend-proxy; need 2"
+    ]
+  },
+  "evidence": [
+    {
+      "id": "ev-001",
+      "tool": "service_overview",
+      "args": {
+        "window": "3m"
+      },
+      "summary": "[{\"service\": \"load-generator\", \"rps\": 1.605, \"error_pct\": 0.0, \"p95_ms\": 30.7, \"base_rps\": 2.08, \"base_p95_ms\": 3836.0}, {\"service\": \"checkout\", \"rps\": 0.167, \"error_pct\": 0.0, \"p95_ms\": 28.0, \"base_rps\": 0.579, \"base_p95_ms\": 30.4}, {\"service\": \"frontend-proxy\", \"rps\": 1.696, \"error_pct\": 0.0, \"p95_ms\": 22.0, \"base_rps\": 32.388, \"base_p95_ms\": 33.5}, {\"service\": \"frontend\", \"rps\": 3.468, \"error_pct\": 0.0, \"p95_ms\": 21.4, \"base_rps\": 27.89, \"base_p95_ms\": 36.7}, {\"service\": \"recommendation\", \"rps\": 0.136, \"error_pct\": 0.0, \"p95_ms\": 3.9, \"base_rps\": 2.686, \"base_p95_ms\": 6.0}, {\"service\": \"pro…"
+    },
+    {
+      "id": "ev-002",
+      "tool": "search_traces",
+      "args": {
+        "service": "frontend",
+        "minutes": 3
+      },
+      "summary": "{\"service\": \"frontend\", \"window_min\": 3, \"traces\": 20, \"failed_traces\": 0, \"failure_origins\": [], \"services_with_errors\": {}, \"slowest_operations\": [{\"service\": \"load-generator\", \"operation\": \"user_checkout_single\", \"max_ms\": 46.4, \"avg_ms\": 46.4}, {\"service\": \"load-generator\", \"operation\": \"POST\", \"max_ms\": 32.2, \"avg_ms\": 19.3}, {\"service\": \"frontend-proxy\", \"operation\": \"POST\", \"max_ms\": 30.5, \"avg_ms\": 17.2}, {\"service\": \"frontend-proxy\", \"operation\": \"router frontend egress\", \"max_ms\": 30.4, \"avg_ms\": 7.6}, {\"service\": \"frontend\", \"operation\": \"POST /api/checkout\", \"max_ms\": 29.9, \"avg_ms…"
+    },
+    {
+      "id": "ev-003",
+      "tool": "container_health",
+      "args": {
+        "name": "frontend"
+      },
+      "summary": "{\"containers\": [{\"name\": \"frontend\", \"state\": \"running\", \"health\": \"healthy\", \"restarts\": 0, \"exit_code\": 0, \"oom_killed\": false, \"started_at\": \"2026-10-24T05:03:50\", \"cpu_pct\": 0.79, \"mem\": \"131.2MiB / 250MiB\", \"mem_pct\": 52.5, \"cpu_limit\": null, \"problems\": []}]}"
+    },
+    {
+      "id": "ev-004",
+      "tool": "container_health",
+      "args": {},
+      "summary": "{\"with_problems\": [], \"healthy\": [\"ad\", \"astronomy-db\", \"cart\", \"checkout\", \"currency\", \"email\", \"flagd\", \"frontend\", \"frontend-proxy\", \"image-provider\", \"jaeger\", \"load-generator\", \"opamp-server\", \"opensearch\", \"otel-collector\", \"payment\", \"product-catalog\", \"prometheus\", \"quote\", \"recommendation\", \"shipping\", \"valkey-cart\"]}"
+    }
+  ],
+  "proposed_action": null,
+  "approval": {
+    "decision": "not_requested",
+    "by": null,
+    "at": null
+  },
+  "execution": null,
+  "verification": null,
+  "timeline": [
+    {
+      "at": "2026-10-24T05:29:44.915651Z",
+      "event": "Alert: frontend-web: no requests (baseline 11.607/s)"
+    },
+    {
+      "at": "2026-10-24T05:32:37.381642Z",
+      "event": "Diagnosis: frontend-proxy — slow routing (router frontend egress) (confidence 0.50)"
+    },
+    {
+      "at": "2026-10-24T05:32:37.381832Z",
+      "event": "Escalated: Diagnosis is not confident enough to act on; escalating with findings."
+    }
+  ],
+  "prevention": [
+    "Add a runbook entry for this failure mode once a human confirms the cause",
+    "Alert on the first symptom seen in this investigation"
+  ]
+}
