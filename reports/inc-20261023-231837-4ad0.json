@@ -1,0 +1,114 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "inc-20261023-231837-4ad0",
+  "alert": "cart: error rate 12.2% (baseline 0.0%); cart: p95 15000 ms (baseline 2 ms)",
+  "detected_at": "2026-10-23T23:18:37.379285Z",
+  "status": "resolved",
+  "diagnosis": {
+    "component": "valkey-cart",
+    "category": "infrastructure",
+    "cause": "valkey-cart is not running; services that depend on it fail. redis container stopped",
+    "confidence": 0.95,
+    "evidence": [
+      "ev-002",
+      "ev-003",
+      "ev-001"
+    ],
+    "escalate": false,
+    "next_steps": [
+      "Model first blamed cart; valkey-cart is not running, so cart is treated as a symptom"
+    ]
+  },
+  "evidence": [
+    {
+      "id": "ev-001",
+      "tool": "service_overview",
+      "args": {
+        "window": "5m"
+      },
+      "summary": "[{\"service\": \"load-generator\", \"rps\": 1.85, \"error_pct\": 5.9, \"p95_ms\": 4203.1, \"base_rps\": 2.08, \"base_p95_ms\": 3836.0}, {\"service\": \"cart\", \"rps\": 1.279, \"error_pct\": 5.3, \"p95_ms\": 2300.0, \"base_rps\": 1.539, \"base_p95_ms\": 1.9}, {\"service\": \"frontend\", \"rps\": 26.018, \"error_pct\": 1.4, \"p95_ms\": 41.1, \"base_rps\": 27.89, \"base_p95_ms\": 36.7}, {\"service\": \"frontend-proxy\", \"rps\": 31.133, \"error_pct\": 0.3, \"p95_ms\": 40.4, \"base_rps\": 32.388, \"base_p95_ms\": 33.5}, {\"service\": \"frontend-web\", \"rps\": 11.778, \"error_pct\": 0.0, \"p95_ms\": 114.3, \"base_rps\": 11.607, \"base_p95_ms\": 101.3}, {\"service\": …"
+    },
+    {
+      "id": "ev-002",
+      "tool": "search_traces",
+      "args": {
+        "service": "cart",
+        "minutes": 5
+      },
+      "summary": "{\"service\": \"cart\", \"window_min\": 5, \"traces\": 20, \"failed_traces\": 17, \"failure_origins\": [{\"service\": \"cart\", \"operation\": \"POST /oteldemo.CartService/GetCart\", \"error\": \"Status(StatusCode=\\\"FailedPrecondition\\\", Detail=\\\"Can't access cart storage. System.ApplicationException: Wasn't able to connect to redis\\n   at cart.cartstore.ValkeyCartStore.EnsureRedisConnected() in /\", \"count\": 13, \"example_trace\": \"6590d4011600c00eb5e73a247c31b521\", \"calls\": \"cart\"}, {\"service\": \"cart\", \"operation\": \"POST /oteldemo.CartService/AddItem\", \"error\": \"Status(StatusCode=\\\"FailedPrecondition\\\", Detail=\\\"Can'…"
+    },
+    {
+      "id": "ev-003",
+      "tool": "container_health",
+      "args": {},
+      "summary": "{\"with_problems\": [{\"name\": \"valkey-cart\", \"state\": \"exited\", \"health\": \"unhealthy\", \"restarts\": 0, \"exit_code\": 0, \"oom_killed\": false, \"started_at\": \"2026-10-23T23:03:58\", \"cpu_pct\": 0.0, \"mem\": \"\", \"mem_pct\": 0.0, \"cpu_limit\": null, \"problems\": [\"not running\", \"unhealthy\"]}], \"healthy\": [\"ad\", \"astronomy-db\", \"cart\", \"checkout\", \"currency\", \"email\", \"flagd\", \"frontend\", \"frontend-proxy\", \"image-provider\", \"jaeger\", \"load-generator\", \"opamp-server\", \"opensearch\", \"otel-collector\", \"payment\", \"product-catalog\", \"prometheus\", \"quote\", \"recommendation\", \"shipping\"]}"
+    }
+  ],
+  "proposed_action": {
+    "action": "restart_service",
+    "target": "valkey-cart",
+    "params": {},
+    "reason": "valkey-cart container shows: not running, unhealthy. A restart restores a stopped or wedged service."
+  },
+  "approval": {
+    "decision": "approved",
+    "by": "ai assistant",
+    "at": "2026-10-23T23:20:35.132716Z"
+  },
+  "execution": {
+    "executed": true,
+    "dry_run": false,
+    "action_id": "act-bbf601ce",
+    "result": "started stopped container valkey-cart",
+    "at": "2026-10-23T23:20:35.759046Z"
+  },
+  "verification": {
+    "recovered": true,
+    "checks": [
+      "23:20:37 valkey-cart: running, health starting, health check starting; cart error rate 92.0% (baseline 0.0%); cart p95 15000 ms (baseline 2 ms)",
+      "23:20:59 valkey-cart: running, health healthy; cart error rate 92.0% (baseline 0.0%); cart p95 15000 ms (baseline 2 ms)",
+      "23:21:22 valkey-cart: running, health healthy; cart error rate 92.0% (baseline 0.0%); cart p95 15000 ms (baseline 2 ms)",
+      "23:21:43 valkey-cart: running, health healthy; cart error rate 12.3% (baseline 0.0%); cart p95 15000 ms (baseline 2 ms)",
+      "23:22:06 valkey-cart: running, health healthy; cart error rate 12.3% (baseline 0.0%); cart p95 15000 ms (baseline 2 ms)",
+      "23:22:28 valkey-cart: running, health healthy; cart p95 15000 ms (baseline 2 ms)",
+      "23:22:50 valkey-cart: running, health healthy; cart p95 15000 ms (baseline 2 ms)",
+      "23:23:12 valkey-cart: running, health healthy; cart p95 15000 ms (baseline 2 ms)",
+      "23:23:35 valkey-cart: running, health healthy; cart, valkey-cart back to baseline"
+    ],
+    "rolled_back": false
+  },
+  "timeline": [
+    {
+      "at": "2026-10-23T23:18:37.379285Z",
+      "event": "Alert: cart: error rate 12.2% (baseline 0.0%); cart: p95 15000 ms (baseline 2 ms)"
+    },
+    {
+      "at": "2026-10-23T23:20:35.130971Z",
+      "event": "Diagnosis: valkey-cart — valkey-cart is not running; services that depend on it fail. redis container stopped (confidence 0.95)"
+    },
+    {
+      "at": "2026-10-23T23:20:35.131250Z",
+      "event": "Proposed: restart_service on valkey-cart. valkey-cart container shows: not running, unhealthy. A restart restores a stopped or wedged service."
+    },
+    {
+      "at": "2026-10-23T23:20:35.132732Z",
+      "event": "Approved by ai assistant"
+    },
+    {
+      "at": "2026-10-23T23:20:35.759076Z",
+      "event": "Action done: started stopped container valkey-cart"
+    },
+    {
+      "at": "2026-10-23T23:20:35.759114Z",
+      "event": "Verifying recovery of valkey-cart"
+    },
+    {
+      "at": "2026-10-23T23:23:35.468914Z",
+      "event": "Recovered: back to baseline"
+    }
+  ],
+  "prevention": [
+    "Alert on container restarts and failing health checks, not only on user-facing errors",
+    "Review the service's memory and CPU limits against its real usage"
+  ]
+}
