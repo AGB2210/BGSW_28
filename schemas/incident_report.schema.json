@@ -198,6 +198,7 @@
             "restart_service",
             "toggle_feature_flag",
             "throttle_load_generator",
+            "remove_cpu_limit",
             "scale_service"
           ],
           "title": "Action",

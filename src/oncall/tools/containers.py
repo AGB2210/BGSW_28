@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any
 
@@ -13,10 +15,52 @@ LIFECYCLE = {"create", "start", "restart", "die", "kill", "oom", "stop", "destro
 RECENT_RESTART_S = 600
 ALWAYS_BUSY = {"load-generator"}  # runs a headless browser; high CPU is its normal state
 LOW_CPU_LIMIT = 0.25  # cores
+DEMO = "label=com.docker.compose.project=opentelemetry-demo"  # leaves out short-lived helper containers
+# Read-only look at a container's network queue: a delay rule there slows every reply it sends.
+NETSHOOT = "nicolaka/netshoot:v0.13"
 
 
 def docker(*args: str, timeout: float = 20) -> str:
     return subprocess.run(["docker", *args], capture_output=True, text=True, timeout=timeout, check=True).stdout
+
+
+def _demo_names() -> list[str]:
+    return docker("ps", "-a", "--filter", DEMO, "--format", "{{.Names}}").split()
+
+
+def network_delay(qdisc: str) -> str | None:
+    """The delay in a `tc qdisc show` line, e.g. 'qdisc netem 8001: root ... delay 2s' -> '2s'."""
+    match = re.search(r"\bnetem\b.*?\bdelay\s+(\S+)", qdisc)
+    return match.group(1) if match else None
+
+
+def _delay_of(name: str) -> str | None:
+    try:
+        out = docker("run", "--rm", "--pull", "never", "--network", f"container:{name}", NETSHOOT,
+                     "tc", "qdisc", "show", "dev", "eth0", timeout=15)
+    except Exception:  # helper image missing or container gone: no finding rather than a failed tool
+        return None
+    return network_delay(out)
+
+
+def _hard_problems(c: dict[str, Any]) -> list[str]:
+    """Problems visible from `docker inspect` alone (cheap enough for the detector to check every cycle)."""
+    st = c["State"]
+    cpu_limit = (c.get("HostConfig", {}).get("NanoCpus") or 0) / 1e9
+    return [p for p, bad in [
+        ("not running", st["Status"] != "running"),
+        ("oom killed", st.get("OOMKilled", False)),
+        (f"cpu limited to {cpu_limit:.2f} cores", 0 < cpu_limit < LOW_CPU_LIMIT),
+    ] if bad]
+
+
+def container_alerts() -> list[dict[str, Any]]:
+    """Detector input: containers that are down, OOM-killed or starved of CPU, whatever the metrics say."""
+    names = _demo_names()
+    if not names:
+        return []
+    return [{"service": c["Name"].lstrip("/"), "kind": "container", "detail": f"container {p}"}
+            for c in json.loads(docker("inspect", *names)) for p in _hard_problems(c)]
 
 
 def _json_lines(text: str) -> list[dict[str, Any]]:
@@ -32,19 +76,25 @@ def _pct(value: str) -> float:
 
 @tool(
     "Health of the demo's containers: running or not, health check, restart count, last exit code, "
-    "out-of-memory kills, and current CPU and memory use against their limits. Problems are listed first.",
+    "out-of-memory kills, current CPU and memory use against their limits, and any delay rule on the "
+    "container's network. Problems are listed first.",
     {
         "type": "object",
         "properties": {"name": {"type": "string", "description": "One container name, or empty for all"}},
     },
 )
 def container_health(name: str = "") -> dict[str, Any]:
-    names = [name] if name else docker("ps", "-a", "--format", "{{.Names}}").split()
+    known = _demo_names()
+    if name and name not in known:  # e.g. frontend-web: a telemetry name with no container of its own
+        return {"error": f"{name} is not a container", "containers": known}
+    names = [name] if name else known
     if not names:
         return {"containers": []}
     inspected = json.loads(docker("inspect", *names))
     running = [c["Name"].lstrip("/") for c in inspected if c["State"]["Running"]]
     stats = {s["Name"]: s for s in _json_lines(docker("stats", "--no-stream", "--format", "json", *running))} if running else {}
+    with ThreadPoolExecutor(max_workers=8) as pool:  # ~0.5 s per container, so check them side by side
+        delays = dict(zip(running, pool.map(_delay_of, running)))
 
     rows = []
     for c in inspected:
@@ -68,14 +118,12 @@ def container_health(name: str = "") -> dict[str, Any]:
         recently_started = bool(started) and (
             datetime.now(timezone.utc) - datetime.fromisoformat(started).replace(tzinfo=timezone.utc)
         ).total_seconds() < RECENT_RESTART_S
-        row["problems"] = [p for p, bad in [
-            ("not running", st["Status"] != "running"),
+        row["problems"] = _hard_problems(c) + [p for p, bad in [
             ("unhealthy", row["health"] == "unhealthy"),
             ("restarted recently", row["restarts"] > 0 and recently_started),  # restart counts are cumulative
-            ("oom killed", row["oom_killed"]),
             # Memory is shown but not flagged: Java services normally sit at 92-98% of their cap.
             ("high cpu", row["cpu_pct"] >= 90 and n not in ALWAYS_BUSY),
-            (f"cpu limited to {row['cpu_limit'] or 0:.2f} cores", 0 < (row["cpu_limit"] or 0) < LOW_CPU_LIMIT),
+            (f"network delay {delays.get(n)}", bool(delays.get(n))),
         ] if bad]
         rows.append(row)
 
@@ -99,8 +147,12 @@ def container_health(name: str = "") -> dict[str, Any]:
     },
 )
 def deployment_history(minutes: int = 30, name: str = "") -> dict[str, Any]:
+    known = _demo_names()
+    if name and name not in known:
+        return {"error": f"{name} is not a container", "containers": known}
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    args = ["events", "--since", f"{int(minutes)}m", "--until", now, "--filter", "type=container", "--format", "json"]
+    args = ["events", "--since", f"{int(minutes)}m", "--until", now, "--filter", "type=container",
+            "--filter", DEMO, "--format", "json"]
     if name:
         args += ["--filter", f"container={name}"]
     events = []
@@ -122,7 +174,7 @@ def deployment_history(minutes: int = 30, name: str = "") -> dict[str, Any]:
         by_container[e["container"]] = by_container.get(e["container"], 0) + 1
 
     # Docker forgets events when its daemon restarts, so also report start times directly.
-    names = [name] if name else docker("ps", "-a", "--format", "{{.Names}}").split()
+    names = [name] if name else known
     cutoff = datetime.now(timezone.utc).timestamp() - minutes * 60
     started = []
     for c in json.loads(docker("inspect", *names)) if names else []:

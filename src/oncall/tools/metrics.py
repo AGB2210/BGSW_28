@@ -28,10 +28,11 @@ def _by_service(query: str) -> dict[str, float]:
     "Call this first to see which services look unhealthy.",
     {
         "type": "object",
-        "properties": {"window": {"type": "string", "description": "PromQL range, e.g. 5m", "default": "5m"}},
+        "properties": {"window": {"type": "string",
+                                  "description": "PromQL range; 3m matches the alert detector", "default": "3m"}},
     },
 )
-def service_overview(window: str = "5m") -> list[dict[str, Any]]:
+def service_overview(window: str = "3m") -> list[dict[str, Any]]:
     rows = service_rows(window)[:12]
     baseline = _baseline()
     for r in rows:  # show what "normal" looks like next to each service

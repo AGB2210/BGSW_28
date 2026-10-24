@@ -27,9 +27,10 @@ def _pattern(body: str) -> str:
         "type": "object",
         "properties": {
             "service": {"type": "string", "description": "Service name, or empty for all services"},
-            "min_severity": {"type": "string", "enum": list(SEVERITY), "default": "WARN"},
+            "min_severity": {"type": "string", "enum": list(SEVERITY), "default": "WARN",
+                             "description": "Lowest severity to include"},
             "contains": {"type": "string", "description": "Optional text the log line must contain"},
-            "minutes": {"type": "integer", "default": 10},
+            "minutes": {"type": "integer", "default": 10, "description": "Look-back window"},
         },
     },
 )

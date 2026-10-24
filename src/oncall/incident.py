@@ -33,6 +33,11 @@ PREVENTION = {
     "throttle_load_generator": [
         "Add rate limiting at the frontend proxy",
         "Alert on request-rate spikes per client",
+        "Restore normal load once the flood source is fixed (faultctl reset or the console's Reset all)",
+    ],
+    "remove_cpu_limit": [
+        "Find out who set the CPU limit and why; record limits in the Compose file, not by hand",
+        "Alert on CPU limits below what the service needs at normal load",
     ],
     None: [
         "Add a runbook entry for this failure mode once a human confirms the cause",
@@ -54,9 +59,10 @@ def _container_ok(name: str) -> tuple[bool, str]:
     """Running and its health check passing (a fresh restart is expected after the fix)."""
     from oncall.tools.containers import container_health
     try:
-        rows = container_health(name)["containers"]
+        result = container_health(name)
     except Exception:
         return True, f"{name} is not a container"
+    rows = [] if "error" in result else result["containers"]
     if not rows:
         return True, f"{name} is not a container"
     row = rows[0]
@@ -138,7 +144,7 @@ def _respond(alert, approver, emit, dry_run, stop, incident_id, timeline, log) -
         timeline=timeline,
     )
 
-    proposal, why = remedy.propose(diagnosis, ledger)
+    proposal, why = remedy.propose(diagnosis, ledger, alert)
     if proposal is None:
         report.status = "escalated"
         log(f"Escalated: {why}", "escalated", {"reason": why})

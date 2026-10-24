@@ -63,6 +63,20 @@ def _throttle(target: str, params: dict, dry_run: bool) -> tuple[str, dict]:
     return f"load generator {previous} -> {users} users", {"previous_users": previous}
 
 
+def _remove_cpu_limit(target: str, params: dict, dry_run: bool) -> tuple[str, dict]:
+    if target in PROTECTED:
+        raise ActionError(f"{target} is part of the observability/flag stack and cannot be changed by the agent")
+    if target not in docker.demo_containers():
+        raise ActionError(f"{target!r} is not a demo container")
+    previous = docker.nano_cpus(target)
+    if not previous:
+        raise ActionError(f"{target} has no CPU limit to remove")
+    if dry_run:
+        return f"would remove the CPU limit of {previous / 1e9:.2f} cores from {target}", {}
+    docker.set_cpus(target, 0)
+    return f"removed the CPU limit of {previous / 1e9:.2f} cores from {target}", {"previous_nano_cpus": previous}
+
+
 def _scale(target: str, params: dict, dry_run: bool) -> tuple[str, dict]:
     raise ActionError("scale_service needs Kubernetes; this demo runs on Docker Compose")
 
@@ -71,6 +85,7 @@ HANDLERS: dict[str, Callable[[str, dict, bool], tuple[str, dict]]] = {
     "restart_service": _restart,
     "toggle_feature_flag": _toggle_flag,
     "throttle_load_generator": _throttle,
+    "remove_cpu_limit": _remove_cpu_limit,
     "scale_service": _scale,
 }
 
@@ -150,6 +165,9 @@ def rollback(action_id: str, approved_by: str | None) -> dict[str, Any]:
         elif "previous_users" in undo:
             loadgen.set_users(undo["previous_users"])
             entry["result"] = f"load generator back to {undo['previous_users']} users"
+        elif "previous_nano_cpus" in undo:
+            docker.set_cpus(original["target"], undo["previous_nano_cpus"] / 1e9)
+            entry["result"] = f"CPU limit of {original['target']} back to {undo['previous_nano_cpus'] / 1e9:.2f} cores"
         else:
             entry["result"] = "nothing to undo (a restart cannot be reversed)"
         entry["status"] = "done"

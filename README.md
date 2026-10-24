@@ -14,7 +14,8 @@ flowchart LR
     A[Detect] --> B[Investigate] --> C[Diagnose] --> D[Propose a fix] --> E{You approve?} --> F[Act] --> G[Verify] --> H[Report]
 ```
 
-1. **Detect.** Notices when a service's errors, latency or traffic jump away from normal.
+1. **Detect.** Notices when a service's errors, latency or traffic jump away from normal, or
+   when a container stops or is starved of CPU.
 2. **Investigate.** The model looks at metrics, traces, logs and container health, one tool at a time.
 3. **Diagnose.** Names the faulty component and the cause, citing the evidence it found.
 4. **Propose a fix.** Picks one safe action, for example restarting a stopped container.
@@ -177,9 +178,9 @@ Settings are in `.env`. The defaults work with the local demo.
 ## Safety
 
 - **You decide.** The agent only proposes. Every real action needs a named approver.
-- **Small set of actions.** The Action API allows only three actions: restart a service,
-  switch a feature flag, or slow down the load generator. It never touches the telemetry
-  stack or the feature-flag service itself.
+- **Small set of actions.** The Action API allows only four actions: restart a service,
+  lift a service's CPU limit, switch a feature flag, or slow down the load generator. It never
+  touches the telemetry stack or the feature-flag service itself.
 - **Dry run by default**, a **kill switch**, and **Cancel** at any point.
 - **Undo on failure.** If the shop does not recover, the action is rolled back.
 - **Everything is logged.** Every action request is logged, including refused ones.

@@ -37,6 +37,42 @@ def test_traffic_flood_throttles_load():
     assert action.action == "throttle_load_generator"
 
 
+
+def _health(name, problems):
+    ledger = Ledger()
+    rows = {"with_problems": [{"name": name, "problems": problems}]} if problems else {"with_problems": [], "healthy": [name]}
+    ledger.add("container_health", {}, rows)
+    return ledger
+
+
+def test_cpu_starved_container_gets_its_limit_lifted():
+    action, _ = remedy.propose(_diag("product-catalog"), _health("product-catalog", ["cpu limited to 0.05 cores"]))
+    assert action.action == "remove_cpu_limit" and action.target == "product-catalog"
+
+
+def test_network_delay_gets_a_restart():
+    action, _ = remedy.propose(_diag("cart"), _health("cart", ["network delay 2s"]))
+    assert action.action == "restart_service" and action.target == "cart"
+
+
+def test_surge_on_a_healthy_frontend_throttles_load():
+    alert = "frontend: request rate 74.8/s (baseline 27.9/s)"
+    action, _ = remedy.propose(_diag("frontend"), _health("frontend", []), alert)
+    assert action.action == "throttle_load_generator" and action.params == {"users": 1}
+
+
+def test_surge_with_slowness_elsewhere_is_not_a_flood():
+    alert = "frontend: request rate 66.2/s (baseline 27.9/s)"
+    ledger = _health("frontend", [])
+    ledger.add("service_overview", {}, [{"service": "frontend-proxy", "rps": 60, "p95_ms": 2136.0, "base_p95_ms": 34.0}])
+    action, _ = remedy.propose(_diag("frontend"), ledger, alert)
+    assert action is None
+
+
+def test_latency_on_a_healthy_service_escalates():
+    action, why = remedy.propose(_diag("ad"), _health("ad", []), "ad: p95 751 ms (baseline 4 ms)")
+    assert action is None and "application" in why
+
 @pytest.fixture
 def loop(tmp_path, monkeypatch):
     monkeypatch.setattr(incident, "REPORT_DIR", tmp_path)

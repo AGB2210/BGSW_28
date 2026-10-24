@@ -97,7 +97,10 @@ Prometheus scrapes once a minute.
 | Latency | p95 ≥ 500 ms and at least 3× the baseline |
 | Traffic surge | requests/s at least 2× the baseline and at least 5/s more |
 | Silent | a service that had ≥ 0.3 requests/s at baseline has stopped completely |
+| Container | a demo container is not running, was OOM-killed, or is limited to under 0.25 CPU cores |
 
+The container alert comes from Docker, not from metrics. It catches a starved or stopped
+service even when its traffic is too low to move the numbers, and it is listed first.
 If half or more of the busy services go silent at once, the agent treats it as a telemetry gap,
 not an incident. The load generator's own numbers are ignored, because its errors are only
 symptoms. The console's **auto-detect** runs this check every 20 seconds, and `oncall watch`
@@ -112,7 +115,7 @@ The model chooses which tool to call next. Every tool is read-only.
 | `service_overview` | Prometheus | requests/s, error % and p95 latency per service, next to the baseline |
 | `search_traces` | Jaeger | failed requests: where each failure *starts*, calls that got no answer, who calls whom, slowest operations |
 | `search_logs` | OpenSearch | warning and error lines grouped into distinct messages with counts |
-| `container_health` | Docker | stopped, unhealthy, restarted, OOM-killed or CPU-starved containers |
+| `container_health` | Docker | stopped, unhealthy, restarted, OOM-killed or CPU-starved containers, and any delay rule on a container's network |
 | `deployment_history` | Docker | containers started or restarted recently: what changed just before |
 
 ```mermaid
@@ -177,7 +180,10 @@ explainable rules:
 | Diagnosis | Proposed action |
 |---|---|
 | The load generator floods the shop | `throttle_load_generator` to 1 user |
+| The container is limited to under 0.25 CPU cores | `remove_cpu_limit` on that container |
+| The container's network has a delay rule | `restart_service`: a restart rebuilds the container's network without the rule |
 | The container is not running, unhealthy, restarting, OOM-killed or near its memory limit | `restart_service` on that container |
+| The container is healthy, but the alert shows a traffic surge on it | `throttle_load_generator` to 1 user: the load generator is the only traffic source here |
 | Anything else (container healthy, fault inside the application) | none: escalate with the findings |
 
 Faults inside a healthy application are escalated on purpose. Fixing them would mean turning
@@ -193,8 +199,8 @@ settings, which the rules forbid.
 doing anything:
 
 - the action is on the allowlist: `restart_service`, `toggle_feature_flag`,
-  `throttle_load_generator`. `scale_service` exists but is always refused, because the demo
-  runs on Docker Compose, not Kubernetes.
+  `throttle_load_generator`, `remove_cpu_limit`. `scale_service` exists but is always refused,
+  because the demo runs on Docker Compose, not Kubernetes.
 - the target is a demo container and not part of the telemetry stack or flagd (protected)
 - an approver is named, unless it is a dry run
 - the kill switch is not engaged
@@ -263,9 +269,18 @@ The expected answers live only in `src/evaluation/`, which the agent never impor
 The one wrong answer in the best run came from the previous incident not having fully cleared.
 The harness now also waits for containers to be healthy before injecting.
 
-The live loop was also tested end to end. Three infrastructure incidents went through the
-command line and one through the console. All four were diagnosed, approved, fixed with a
-restart and verified as recovered within 1–3 minutes.
+The live loop was also tested end to end: diagnose, propose, approve, act, verify.
+
+| Incident | Agent's answer | Action | Outcome |
+|---|---|---|---|
+| service-down, cache-down, db-down | the stopped container | `restart_service` | resolved in 1–3 minutes (cache-down also through the console) |
+| network-latency | cart, confidence 1.0 | `restart_service` (rebuilds its network) | resolved |
+| cpu-starve | product-catalog, confidence 1.0 | `remove_cpu_limit` | resolved |
+| homepage-flood | frontend, confidence 0.95 | `throttle_load_generator` | eased: traffic back to normal, flood setting still on |
+| image-slow | frontend-proxy, confidence 0.5 | none | handed over, and correctly not throttled |
+
+In these practice runs the approval was given automatically under the name "ai assistant".
+The other 8 incidents are flag-driven application bugs: the agent diagnoses and hands them over.
 
 **Thinking mode** (`OLLAMA_THINK=true`) was compared on six hard incidents. It was slower
 (~216 s vs ~130 s per investigation) and less decisive (2 vs 4 confident correct answers),

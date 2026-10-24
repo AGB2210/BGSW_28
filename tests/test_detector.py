@@ -77,3 +77,22 @@ def test_latency_jump_fires_but_load_generator_is_ignored():
     found = anomalies(BASE, now)
     assert [(a["service"], a["kind"]) for a in found] == [("cart", "latency")]
     assert "cart" in alert_text(found)
+
+
+def test_container_problems_alert_first(monkeypatch):
+    from oncall import detector
+    now = {**BASE, "checkout": {**BASE["checkout"], "error_pct": 40.0}}
+    monkeypatch.setattr(detector, "load_baseline", lambda: BASE)
+    monkeypatch.setattr(detector, "snapshot", lambda window: now)
+    monkeypatch.setattr(detector, "container_alerts", lambda: [
+        {"service": "product-catalog", "kind": "container", "detail": "container cpu limited to 0.05 cores"},
+        {"service": "load-generator", "kind": "container", "detail": "container not running"}])
+    assert detector.check() == "product-catalog: container cpu limited to 0.05 cores; checkout: error rate 40.0% (baseline 0.0%)"
+
+
+def test_docker_outage_leaves_metric_alerts(monkeypatch):
+    from oncall import detector
+    monkeypatch.setattr(detector, "load_baseline", lambda: BASE)
+    monkeypatch.setattr(detector, "snapshot", lambda window: BASE)
+    monkeypatch.setattr(detector, "container_alerts", lambda: (_ for _ in ()).throw(OSError("docker down")))
+    assert detector.check() is None

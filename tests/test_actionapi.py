@@ -12,6 +12,8 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(actions.docker, "is_running", lambda name: True)
     monkeypatch.setattr(actions.docker, "restart", lambda name: calls.append(("restart", name)))
     monkeypatch.setattr(actions.flags, "set_variant", lambda flag, v: calls.append(("flag", flag, v)) or "on")
+    monkeypatch.setattr(actions.docker, "nano_cpus", lambda name: 50_000_000 if name == "cart" else 0)
+    monkeypatch.setattr(actions.docker, "set_cpus", lambda name, cpus: calls.append(("cpus", name, cpus)))
     return calls
 
 
@@ -69,3 +71,16 @@ def test_clear_archives_the_log_and_rollback_still_works(isolated):
 
 def test_scale_is_refused_on_compose():
     assert actions.execute(req(action="scale_service"))["status"] == "refused"
+
+
+def test_cpu_limit_is_lifted_and_can_be_put_back(isolated):
+    done = actions.execute(req(action="remove_cpu_limit"))
+    assert done["status"] == "done" and isolated == [("cpus", "cart", 0)]
+    assert actions.rollback(done["id"], "agb")["status"] == "done"
+    assert isolated[-1] == ("cpus", "cart", 0.05)
+
+
+def test_cpu_limit_action_needs_a_limit_and_spares_the_telemetry_stack(isolated):
+    assert actions.execute(req(action="remove_cpu_limit", target="checkout"))["status"] == "refused"
+    assert actions.execute(req(action="remove_cpu_limit", target="jaeger"))["status"] == "refused"
+    assert isolated == []

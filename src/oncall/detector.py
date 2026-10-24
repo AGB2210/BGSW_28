@@ -1,6 +1,7 @@
 """Alert detector: compares live service metrics with a saved healthy baseline.
 
-It fires on an error-rate jump, a latency jump, or a service that stops serving.
+It fires on an error-rate jump, a latency jump, a traffic surge, a service that stops
+serving, or a container that is down, OOM-killed or starved of CPU.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from oncall.tools.containers import container_alerts
 from oncall.tools.metrics import service_rows
 
 BASELINE_FILE = Path("runs/baseline.json")
@@ -93,7 +95,11 @@ def anomalies(baseline: dict[str, dict], current: dict[str, dict],
         if base_rps and now["rps"] >= SURGE_FACTOR * base_rps and now["rps"] - base_rps >= SURGE_MIN_EXTRA_RPS:
             found.append({"service": svc, "kind": "surge",
                           "detail": f"request rate {now['rps']:.1f}/s (baseline {base_rps:.1f}/s)"})
-    rank = {"errors": 0, "silent": 1, "latency": 2, "surge": 3}
+    return _ranked(found)
+
+
+def _ranked(found: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rank = {"container": 0, "errors": 1, "silent": 2, "latency": 3, "surge": 4}
     return sorted(found, key=lambda a: rank[a["kind"]])
 
 
@@ -103,8 +109,15 @@ def alert_text(found: list[dict[str, Any]]) -> str | None:
     return "; ".join(f"{a['service']}: {a['detail']}" for a in found[:4])
 
 
+def _containers() -> list[dict[str, Any]]:
+    try:
+        return [a for a in container_alerts() if a["service"] not in IGNORED]
+    except Exception:  # Docker briefly unreachable: metrics alone still work
+        return []
+
+
 def current_anomalies() -> list[dict[str, Any]]:
-    return anomalies(load_baseline(), snapshot(WINDOW))
+    return _ranked(_containers() + anomalies(load_baseline(), snapshot(WINDOW)))
 
 
 def check() -> str | None:

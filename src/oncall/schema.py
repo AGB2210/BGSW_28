@@ -14,7 +14,8 @@ from pydantic import BaseModel, Field
 
 SCHEMA_VERSION = "1.0"
 
-ActionName = Literal["restart_service", "toggle_feature_flag", "throttle_load_generator", "scale_service"]
+ActionName = Literal["restart_service", "toggle_feature_flag", "throttle_load_generator", "remove_cpu_limit",
+                     "scale_service"]
 
 
 class Diagnosis(BaseModel):

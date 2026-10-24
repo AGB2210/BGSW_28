@@ -12,7 +12,8 @@ from dataclasses import dataclass
 
 from oncall.config import get_settings
 
-ALLOWED_ACTIONS = frozenset({"restart_service", "toggle_feature_flag", "throttle_load_generator", "scale_service"})
+ALLOWED_ACTIONS = frozenset({"restart_service", "toggle_feature_flag", "throttle_load_generator", "remove_cpu_limit",
+                             "scale_service"})
 
 
 @dataclass(frozen=True)

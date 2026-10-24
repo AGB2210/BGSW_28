@@ -1,4 +1,4 @@
-from oncall.tools.containers import _pct
+from oncall.tools.containers import _hard_problems, _pct, network_delay
 from oncall.tools.logs import _pattern
 from oncall.tools.traces import _attrs, _origins
 
@@ -53,3 +53,15 @@ def test_callee_from_rpc_span_name():
 def test_percent_parsing():
     assert _pct("93.5%") == 93.5
     assert _pct("--") == 0.0
+
+
+def test_network_delay_is_read_from_the_queue_rule():
+    assert network_delay("qdisc netem 8001: root refcnt 2 limit 1000 delay 2s") == "2s"
+    assert network_delay("qdisc noqueue 0: root refcnt 2") is None
+
+
+def test_hard_problems_from_inspect():
+    c = {"State": {"Status": "running", "OOMKilled": False}, "HostConfig": {"NanoCpus": 50_000_000}}
+    assert _hard_problems(c) == ["cpu limited to 0.05 cores"]
+    stopped = {"State": {"Status": "exited", "OOMKilled": True}, "HostConfig": {"NanoCpus": 0}}
+    assert _hard_problems(stopped) == ["not running", "oom killed"]
