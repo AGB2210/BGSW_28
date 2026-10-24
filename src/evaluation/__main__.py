@@ -19,6 +19,7 @@ from oncall import detector
 from oncall.agent import investigate
 
 OUT_DIR = Path("runs/eval")
+QUIET_S = 300  # the longest look-back window the agent's tools use by default (search_traces: 5 minutes)
 
 
 def wait_until(check, timeout_s: int, every_s: int = 20):
@@ -51,9 +52,12 @@ def _calm() -> bool:
     return detector.check() is None and not container_health()["with_problems"]
 
 
-def run_one(incident_id: str, detect_timeout: int, settle_timeout: int) -> dict:
+def run_one(incident_id: str, detect_timeout: int, settle_timeout: int, quiet: int = QUIET_S) -> dict:
     print(f"\n=== {incident_id}")
     incidents.reset()
+    # Let the previous incident age out of every look-back window first: the detector can look
+    # calm within seconds of a reset, while traces still show the last incident's failures.
+    time.sleep(quiet)
     calm = wait_until(_calm, settle_timeout)
     if not calm:
         print("  warning: baseline not calm before injection")
