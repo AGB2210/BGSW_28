@@ -253,7 +253,7 @@ The final status is one of: `resolved`, `escalated`, `rejected`, `dry_run`, `can
 
 `python -m evaluation` runs each practice incident in five steps:
 
-1. wait until the system is calm
+1. wait 5 minutes after the previous reset, then until the system is calm
 2. inject the incident
 3. wait for the alert
 4. run the investigation
@@ -261,13 +261,21 @@ The final status is one of: `resolved`, `escalated`, `rejected`, `dry_run`, `can
 
 The expected answers live only in `src/evaluation/`, which the agent never imports.
 
-| Run | Correct | Of which confident | Escalated | Wrong |
+| Run | Right component | Of which confident | Escalated | Wrong |
 |---|---|---|---|---|
 | First run | 2 / 14 | – | 9 | 3 |
-| Best full run | **12 / 14** | 8 | 1 | 1 |
+| Run 6 | 12 / 14 | 8 | 1 | 1 |
+| **Run 8** (all fixes) | **13 / 14** | **9** | 1 | **0** |
 
-The one wrong answer in the best run came from the previous incident not having fully cleared.
-The harness now also waits for containers to be healthy before injecting.
+"Confident" means confidence of at least 0.6 without the model asking to escalate, so the agent
+would act. All five infrastructure incidents were right in run 8, four of them alerted within a
+second by the container alert. The one escalation is product-catalog-failure: a single failing
+product produces too little signal to point anywhere.
+
+The wait in step 1 matters: the detector can look calm seconds after a reset while the trace
+tool, which looks back 5 minutes, still shows the previous incident's failures. Run 8 first let
+three incidents start that way; they were re-run on a clean start and the numbers above use those
+results. The same caution applies to back-to-back incidents in real use.
 
 The live loop was also tested end to end: diagnose, propose, approve, act, verify.
 
