@@ -53,6 +53,12 @@ def _only_a_flood(alert: str, ledger: Ledger) -> bool:
     return True
 
 
+def pure_flood(component: str | None, alert: str, ledger: Ledger) -> str | None:
+    """The surge line when `component` is flooded and nothing else is wrong, else None."""
+    surge = _surge(component or "", alert)
+    return surge if surge and _only_a_flood(alert, ledger) else None
+
+
 def propose(diagnosis: Diagnosis, ledger: Ledger, alert: str = "") -> tuple[ProposedAction | None, str]:
     """Return (action or None, explanation)."""
     if diagnosis.escalate or not diagnosis.component:
@@ -84,8 +90,8 @@ def propose(diagnosis: Diagnosis, ledger: Ledger, alert: str = "") -> tuple[Prop
             reason=f"{component} container shows: {found}. A restart restores a stopped or wedged service.",
         ), f"Container problem on {component}: restart it."
 
-    surge = _surge(component, alert)
-    if surge and not problems and _only_a_flood(alert, ledger):
+    surge = pure_flood(component, alert, ledger)
+    if surge and not problems:
         return ProposedAction(
             action="throttle_load_generator", target="load-generator", params={"users": 1},
             reason=f"{component} is healthy but flooded ({surge}). The load generator is the only traffic "

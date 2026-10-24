@@ -66,6 +66,7 @@ select, input[type=text] { width: 100%; padding: 6px 8px; border: 1px solid var(
 .btn.danger { background: var(--bad); color: #fff; border-color: var(--bad); }
 .btn.danger.off { background: var(--panel); color: var(--bad); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn.small { padding: 2px 8px; font-size: 12px; text-transform: none; letter-spacing: 0; }
 .btn:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .toggle { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .toggle input { width: 34px; height: 18px; accent-color: var(--accent); }
@@ -138,7 +139,8 @@ select, input[type=text] { width: 100%; padding: 6px 8px; border: 1px solid var(
     </section>
 
     <section class="card">
-      <h2>Services <span class="muted mono" id="svcTime"></span></h2>
+      <h2><span>Services <span class="muted" title="Averages over the last 3 minutes, the same window as the alert detector. Prometheus collects new data once a minute.">last 3 min</span></span>
+        <span class="row"><span class="muted mono" id="svcTime"></span><button class="btn small" id="svcRefresh" title="Reload now (the table also reloads every 10 s)">Refresh</button></span></h2>
       <div class="scroll"><table id="svcTable">
         <thead><tr><th data-key="service">Service</th><th class="n" data-key="rps" data-num>req/s</th><th class="n" data-key="error_pct" data-num>err %</th><th class="n" data-key="p95_ms" data-num>p95 ms</th></tr></thead>
         <tbody id="svcBody"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
@@ -291,6 +293,10 @@ function renderServices() {
   if (!svcData.services.length) { const tr = el("tr"); const td = el("td", "muted", "No traffic data"); td.colSpan = 4; tr.append(td); body.append(tr); }
 }
 sortable("svcTable", renderServices);
+$("#svcRefresh").onclick = async () => {
+  const b = $("#svcRefresh"); b.disabled = true; b.textContent = "Refreshing…";
+  await refreshServices(); b.disabled = false; b.textContent = "Refresh";
+};
 
 // ---------- action log ----------
 let logRows = [];

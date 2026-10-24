@@ -8,7 +8,7 @@ from typing import Any, Callable
 
 from pydantic import ValidationError
 
-from oncall import llm, tools
+from oncall import llm, remedy, tools
 from oncall.tools import containers
 from oncall.config import get_settings
 from oncall.evidence import Ledger
@@ -370,6 +370,12 @@ def _finalise(content: str, ledger: Ledger, min_confidence: float, alert: str = 
                 diagnosis.component = culprit
                 diagnosis.next_steps.append(f"Model's original explanation: {diagnosis.cause}")
                 diagnosis.cause = f"{culprit}: {', '.join(problems)}."
+
+    # A pure traffic flood is stated as such: the model tends to explain a surge as some other fault.
+    surge = remedy.pure_flood(diagnosis.component, alert, ledger)
+    if surge and not _container_rows(ledger).get(diagnosis.component or "", {}).get("problems"):
+        diagnosis.next_steps.append(f"Model's original explanation: {diagnosis.cause}")
+        diagnosis.cause = f"Traffic flood: {diagnosis.component} receives {surge}, while nothing is slow or failing."
 
     # The category follows the container evidence when the blamed container itself is broken
     # (high CPU or a recent restart can come from the application, so those do not count).

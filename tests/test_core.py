@@ -213,3 +213,14 @@ def test_only_explicit_yes_approves():
     proposal = ProposedAction("restart_service", "product-catalog", "health check failing")
     assert ask_approval(proposal, ask=lambda _: "yes") is True
     assert ask_approval(proposal, ask=lambda _: "y") is False
+
+
+def test_a_pure_flood_is_stated_as_the_cause():
+    ledger = Ledger()
+    ledger.add("service_overview", {}, [{"service": "frontend", "rps": 65.8, "error_pct": 0.0, "p95_ms": 40.0,
+                                         "base_rps": 27.9, "base_p95_ms": 37.0}])
+    ledger.add("container_health", {}, {"with_problems": [], "healthy": ["frontend"]})
+    reply = '{"component": "frontend", "cause": "Network latency", "confidence": 0.9, "evidence": ["ev-001"], "escalate": false}'
+    d = _finalise(reply, ledger, 0.6, alert="frontend: request rate 65.8/s (baseline 27.9/s)")
+    assert d.cause.startswith("Traffic flood: frontend receives request rate 65.8/s")
+    assert any("Network latency" in s for s in d.next_steps)
