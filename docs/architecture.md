@@ -53,7 +53,7 @@ flowchart LR
 | On-Call Console (`src/console`) | Web page for the demo: live feed, approve/reject, kill switch | Us |
 | faultctl (`src/faultctl`) | Injects and resets practice incidents | Us |
 
-The agent can only *read* the telemetry. Changes go through the Action API, and the Action API
+The agent can only read the telemetry. Changes go through the Action API, and the Action API
 needs a named approver.
 
 ## One incident, start to finish
@@ -87,7 +87,7 @@ sequenceDiagram
 
 ## 1. Detect
 
-`detector.py` saves a **baseline** of every service while the demo is healthy (`oncall baseline`).
+`detector.py` saves a baseline of every service while the demo is healthy (`oncall baseline`).
 It then compares the last 3 minutes with that baseline. The window is 3 minutes because
 Prometheus scrapes once a minute.
 
@@ -103,7 +103,7 @@ The container alert comes from Docker, not from metrics. It catches a starved or
 service even when its traffic is too low to move the numbers, and it is listed first.
 If half or more of the busy services go silent at once, the agent treats it as a telemetry gap,
 not an incident. The load generator's own numbers are ignored, because its errors are only
-symptoms. The console's **auto-detect** runs this check every 20 seconds, and `oncall watch`
+symptoms. The console's auto-detect runs this check every 20 seconds, and `oncall watch`
 does the same from the command line.
 
 ## 2. Investigate: the tools
@@ -113,7 +113,7 @@ The model chooses which tool to call next. Every tool is read-only.
 | Tool | Reads from | Gives the model |
 |---|---|---|
 | `service_overview` | Prometheus | requests/s, error % and p95 latency per service, next to the baseline |
-| `search_traces` | Jaeger | failed requests: where each failure *starts*, calls that got no answer, who calls whom, slowest operations |
+| `search_traces` | Jaeger | failed requests: where each failure starts, calls that got no answer, who calls whom, slowest operations |
 | `search_logs` | OpenSearch | warning and error lines grouped into distinct messages with counts |
 | `container_health` | Docker | stopped, unhealthy, restarted, OOM-killed or CPU-starved containers, and any delay rule on a container's network |
 | `deployment_history` | Docker | containers started or restarted recently: what changed just before |
@@ -130,17 +130,17 @@ flowchart TD
 
 A few details make a small model reliable here:
 
-- **Evidence ledger.** Every tool result gets an ID. The final answer must cite those IDs, and
+- Evidence ledger. Every tool result gets an ID. The final answer must cite those IDs, and
   invented IDs are rejected.
-- **Container sweep.** If the model never checked all containers, the agent does it
+- Container sweep. If the model never checked all containers, the agent does it
   automatically before the final answer, so a stopped database is never missed.
-- **Constrained answer.** The final JSON must match a schema in which the component can only
+- Constrained answer. The final JSON must match a schema in which the component can only
   be a service that appeared in the evidence. The model can't invent names like "root_cause".
-- **Context limit.** When the conversation fills 75% of the model's context window, the agent
+- Context limit. When the conversation fills 75% of the model's context window, the agent
   stops investigating and asks for the answer.
-- **Nudge.** If the model tries to stop before covering the basics (metrics, traces, containers),
+- Nudge. If the model tries to stop before covering the basics (metrics, traces, containers),
   it is reminded once.
-- **No flag peeking.** The rules forbid reading feature-flag settings. Tools cannot reach flagd
+- No flag peeking. The rules forbid reading feature-flag settings. Tools cannot reach flagd
   or the flag UI, flag events are removed from traces, and flagd's own spans are left out of the
   metrics. Those spans also used to look like 15-second payment delays.
 
@@ -151,10 +151,10 @@ replaces the model's pick. The model's original explanation is kept in the repor
 
 | # | If the evidence shows… | Then blame… | Why |
 |---|---|---|---|
-| 1 | exactly one container **not running** or **OOM-killed** | that container | a dead dependency explains its callers' errors |
-| 2 | the blamed service's calls to another service got **no answer** | the service that didn't answer | the caller is only the messenger |
-| 3 | traced failures **start** in a service that the blamed one depends on | where the failures start | errors travel up the call chain |
-| 4 | nothing supports the model's pick, and exactly **one container** has problems | that container | it is the only concrete lead |
+| 1 | exactly one container not running or OOM-killed | that container | a dead dependency explains its callers' errors |
+| 2 | the blamed service's calls to another service got no answer | the service that didn't answer | the caller is only the messenger |
+| 3 | traced failures start in a service that the blamed one depends on | where the failures start | errors travel up the call chain |
+| 4 | nothing supports the model's pick, and exactly one container has problems | that container | it is the only concrete lead |
 
 Then the answer is validated:
 
@@ -192,10 +192,10 @@ settings, which the rules forbid.
 
 ## 5–7. Approve, act, verify
 
-**Approve.** The proposal goes to a human: the **Approve / Reject** card in the console, or a
+Approve. The proposal goes to a human: the Approve / Reject card in the console, or a
 `yes/no` prompt in `oncall respond`. Real actions need the approver's name.
 
-**Act.** The agent sends the approved action to the Action API, which checks it again before
+Act. The agent sends the approved action to the Action API, which checks it again before
 doing anything:
 
 - the action is on the allowlist: `restart_service`, `toggle_feature_flag`,
@@ -207,13 +207,13 @@ doing anything:
 
 Every call is written to `runs/actions.jsonl`, refused ones included, together with how to undo it.
 
-**Verify.** Every 20 seconds for up to 5 minutes, the agent checks two things:
+Verify. Every 20 seconds for up to 5 minutes, the agent checks two things:
 
 1. the container is running and healthy, and
 2. neither the component nor any service named in the alert is still abnormal.
 
-If both hold, the incident is **resolved**. If not, the action is **rolled back** where
-possible and the incident **escalates**. A brief metrics outage, for example under heavy CPU
+If both hold, the incident is resolved. If not, the action is rolled back where
+possible and the incident escalates. A brief metrics outage, for example under heavy CPU
 load, is waited out rather than counted as a failure.
 
 ## 8. Report
@@ -240,7 +240,7 @@ The final status is one of: `resolved`, `escalated`, `rejected`, `dry_run`, `can
 | Kill switch | Console button or `touch .killswitch`; blocks every action |
 | Cancel | Stops an investigation, approval wait or recovery check; still writes a report |
 | Rollback | A failed recovery undoes the action where possible and escalates |
-| Audit log | Every Action API call is logged; **Clear** in the console archives the log, never deletes it |
+| Audit log | Every Action API call is logged; Clear in the console archives the log, never deletes it |
 | Escalate when unsure | Weak or uncorroborated answers go to a human instead of acting |
 
 ## Practice incidents and evaluation
@@ -265,7 +265,7 @@ The expected answers live only in `src/evaluation/`, which the agent never impor
 |---|---|---|---|---|
 | First run | 2 / 14 | – | 9 | 3 |
 | Run 6 | 12 / 14 | 8 | 1 | 1 |
-| **Run 8** (all fixes) | **13 / 14** | **9** | 1 | **0** |
+| Run 8 (all fixes) | 13 / 14 | 9 | 1 | 0 |
 
 "Confident" means confidence of at least 0.6 without the model asking to escalate, so the agent
 would act. All five infrastructure incidents were right in run 8, four of them alerted within a
@@ -290,7 +290,7 @@ The live loop was also tested end to end: diagnose, propose, approve, act, verif
 In these practice runs the approval was given automatically under the name "ai assistant".
 The other 8 incidents are flag-driven application bugs: the agent diagnoses and hands them over.
 
-**Thinking mode** (`OLLAMA_THINK=true`) was compared on six hard incidents. It was slower
+Thinking mode (`OLLAMA_THINK=true`) was compared on six hard incidents. It was slower
 (~216 s vs ~130 s per investigation) and less decisive (2 vs 4 confident correct answers),
 so it stays off.
 

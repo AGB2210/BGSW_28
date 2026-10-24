@@ -23,7 +23,7 @@
 | Tool or model | Used for |
 |---|---|
 | qwen3:4b, run locally with Ollama | The agent's model: chooses tools and writes the diagnosis. No hosted AI service is used at run time. |
-| **Claude Code** (Anthropic), an AI coding assistant | Used throughout development: it wrote most of the code, tests and documentation under our direction, ran the evaluations and live tests, tested the console in a browser and helped prepare the slides. We set the goals and constraints, made the design decisions, reviewed the results and pushed the code. |
+| Claude Code (Anthropic), an AI coding assistant | Used throughout development: it wrote most of the code, tests and documentation under our direction, ran the evaluations and live tests, tested the console in a browser and helped prepare the slides. We set the goals and constraints, made the design decisions, reviewed the results and pushed the code. |
 | OpenTelemetry Demo 3.1.0 | The shop being monitored, with its own telemetry stack: OpenTelemetry Collector, Prometheus, Jaeger, OpenSearch, flagd, Envoy, Locust, PostgreSQL and Valkey |
 | Docker Engine and Docker Compose, in WSL2 Ubuntu 24.04 | Run the demo, the model and the agent on one laptop |
 | nicolaka/netshoot container image | Adds the network delay for one practice incident, and reads delay rules for the container check |

@@ -4,14 +4,14 @@ Which practice incidents the agent got right and wrong in our own testing, and w
 
 ## How we tested
 
-- **14 practice incidents**, injected with faultctl: 9 application faults (the demo's failure flags)
+- 14 practice incidents, injected with faultctl: 9 application faults (the demo's failure flags)
   and 5 infrastructure faults.
 - For each one, `python -m evaluation` resets everything, waits 5 minutes and until the system is
   calm, injects the fault, waits up to 5 minutes for the detector's alert, runs the investigation and
   compares the agent's answer with the expected component.
-- **Exact names only.** An answer is right only when the component name matches one we accept for
+- Exact names only. An answer is right only when the component name matches one we accept for
   that incident.
-- **Confident** means a confidence of at least 0.6 without the model asking to escalate. Only a
+- Confident means a confidence of at least 0.6 without the model asking to escalate. Only a
   confident diagnosis goes on to propose an action.
 - The results below are from run 8, the final run with every fix. Four incidents were re-run on a
   clean start: two had started while the previous incident's failures were still visible, one was
@@ -37,7 +37,7 @@ Which practice incidents the agent got right and wrong in our own testing, and w
 | cpu-starve | product-catalog | product-catalog | 1.00 | Right | The container alert showed a CPU limit of 0.05 cores; the container check agreed |
 | network-latency | cart | cart | 0.95 | Right | Cart's latency jumped while its container looked healthy; the container check found a 2-second network delay rule |
 
-**Totals:** 13 of 14 right (9 confident, 4 not confident enough to act), 1 escalated, 0 wrong.
+Totals: 13 of 14 right (9 confident, 4 not confident enough to act), 1 escalated, 0 wrong.
 
 ## Actions in live tests
 
