@@ -1,0 +1,72 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "inc-20261024-054716-565b",
+  "alert": "valkey-cart: container not running; frontend-web: no requests (baseline 11.607/s)",
+  "detected_at": "2026-10-24T05:47:16.605915Z",
+  "status": "escalated",
+  "diagnosis": {
+    "component": "valkey-cart",
+    "category": "unknown",
+    "cause": "container stopped",
+    "confidence": 1.0,
+    "evidence": [
+      "ev-002",
+      "ev-003"
+    ],
+    "escalate": false,
+    "next_steps": []
+  },
+  "evidence": [
+    {
+      "id": "ev-002",
+      "tool": "container_health",
+      "args": {
+        "name": "valkey-cart"
+      },
+      "summary": "{\"containers\": [{\"name\": \"valkey-cart\", \"state\": \"exited\", \"health\": \"unhealthy\", \"restarts\": 0, \"exit_code\": 0, \"oom_killed\": false, \"started_at\": \"2026-10-24T05:40:45\", \"cpu_pct\": 0.0, \"mem\": \"\", \"mem_pct\": 0.0, \"cpu_limit\": null, \"problems\": [\"not running\", \"unhealthy\"]}]}"
+    },
+    {
+      "id": "ev-003",
+      "tool": "container_health",
+      "args": {
+        "name": ""
+      },
+      "summary": "{\"with_problems\": [{\"name\": \"valkey-cart\", \"state\": \"exited\", \"health\": \"unhealthy\", \"restarts\": 0, \"exit_code\": 0, \"oom_killed\": false, \"started_at\": \"2026-10-24T05:40:45\", \"cpu_pct\": 0.0, \"mem\": \"\", \"mem_pct\": 0.0, \"cpu_limit\": null, \"problems\": [\"not running\", \"unhealthy\"]}], \"healthy\": [\"ad\", \"astronomy-db\", \"cart\", \"checkout\", \"currency\", \"email\", \"flagd\", \"frontend\", \"frontend-proxy\", \"image-provider\", \"jaeger\", \"load-generator\", \"opamp-server\", \"opensearch\", \"otel-collector\", \"payment\", \"product-catalog\", \"prometheus\", \"quote\", \"recommendation\", \"shipping\"]}"
+    }
+  ],
+  "proposed_action": {
+    "action": "restart_service",
+    "target": "valkey-cart",
+    "params": {},
+    "reason": "valkey-cart container shows: not running, unhealthy. A restart restores a stopped or wedged service."
+  },
+  "approval": {
+    "decision": "not_requested",
+    "by": null,
+    "at": null
+  },
+  "execution": null,
+  "verification": null,
+  "timeline": [
+    {
+      "at": "2026-10-24T05:47:16.605915Z",
+      "event": "Alert: valkey-cart: container not running; frontend-web: no requests (baseline 11.607/s)"
+    },
+    {
+      "at": "2026-10-24T05:48:59.682212Z",
+      "event": "Diagnosis: valkey-cart — container stopped (confidence 1.00)"
+    },
+    {
+      "at": "2026-10-24T05:48:59.682501Z",
+      "event": "Proposed: restart_service on valkey-cart. valkey-cart container shows: not running, unhealthy. A restart restores a stopped or wedged service."
+    },
+    {
+      "at": "2026-10-24T05:48:59.684454Z",
+      "event": "Kill switch engaged: no action taken"
+    }
+  ],
+  "prevention": [
+    "Alert on container restarts and failing health checks, not only on user-facing errors",
+    "Review the service's memory and CPU limits against its real usage"
+  ]
+}

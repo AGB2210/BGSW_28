@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "inc-20261024-062112-4c96",
+  "alert": "payment is slow and is failing",
+  "detected_at": "2026-10-24T06:21:12.481661Z",
+  "status": "escalated",
+  "diagnosis": {
+    "component": "payment",
+    "category": "unknown",
+    "cause": "token validation fails for gold users",
+    "confidence": 0.5,
+    "evidence": [
+      "ev-002",
+      "ev-004",
+      "ev-003"
+    ],
+    "escalate": true,
+    "next_steps": [
+      "Not corroborated: only 1 source(s) show a problem in payment; need 2"
+    ]
+  },
+  "evidence": [
+    {
+      "id": "ev-002",
+      "tool": "search_traces",
+      "args": {
+        "service": "payment",
+        "minutes": 3
+      },
+      "summary": "{\"service\": \"payment\", \"window_min\": 3, \"traces\": 3, \"failed_traces\": 1, \"failure_origins\": [{\"service\": \"frontend-proxy\", \"operation\": \"router frontend egress\", \"error\": \"(no message)\", \"count\": 1, \"example_trace\": \"0218405dd668ad7ee2c53981c066aff2\"}, {\"service\": \"load-generator\", \"operation\": \"POST\", \"error\": \"(no message)\", \"count\": 1, \"example_trace\": \"0218405dd668ad7ee2c53981c066aff2\"}, {\"service\": \"payment\", \"operation\": \"charge\", \"error\": \"Payment request failed. Invalid token. demo.user_context.loyalty_level=gold\", \"count\": 1, \"example_trace\": \"0218405dd668ad7ee2c53981c066aff2\"}], \"ser…"
+    },
+    {
+      "id": "ev-003",
+      "tool": "search_logs",
+      "args": {
+        "min_severity": "ERROR",
+        "minutes": 3,
+        "service": "payment"
+      },
+      "summary": "{\"service\": \"payment\", \"window_min\": 3, \"matching_lines\": 0, \"distinct_messages\": []}"
+    },
+    {
+      "id": "ev-004",
+      "tool": "container_health",
+      "args": {
+        "name": "payment"
+      },
+      "summary": "{\"containers\": [{\"name\": \"payment\", \"state\": \"running\", \"health\": \"healthy\", \"restarts\": 0, \"exit_code\": 0, \"oom_killed\": false, \"started_at\": \"2026-10-24T05:03:44\", \"cpu_pct\": 0.3, \"mem\": \"78.74MiB / 256MiB\", \"mem_pct\": 30.76, \"cpu_limit\": null, \"problems\": []}]}"
+    }
+  ],
+  "proposed_action": null,
+  "approval": {
+    "decision": "not_requested",
+    "by": null,
+    "at": null
+  },
+  "execution": null,
+  "verification": null,
+  "timeline": [
+    {
+      "at": "2026-10-24T06:21:12.481661Z",
+      "event": "Alert: payment is slow and is failing"
+    },
+    {
+      "at": "2026-10-24T06:23:27.174896Z",
+      "event": "Diagnosis: payment — token validation fails for gold users (confidence 0.50)"
+    },
+    {
+      "at": "2026-10-24T06:23:27.175147Z",
+      "event": "Escalated: Diagnosis is not confident enough to act on; escalating with findings."
+    }
+  ],
+  "prevention": [
+    "Add a runbook entry for this failure mode once a human confirms the cause",
+    "Alert on the first symptom seen in this investigation"
+  ]
+}
