@@ -1,0 +1,91 @@
+{
+  "schema_version": "1.0",
+  "incident_id": "inc-20261024-085640-48f7",
+  "alert": "product-catalog: container cpu limited to 0.05 cores",
+  "detected_at": "2026-10-24T08:56:40.178964Z",
+  "status": "dry_run",
+  "diagnosis": {
+    "component": "product-catalog",
+    "category": "infrastructure",
+    "cause": "infrastructure",
+    "confidence": 1.0,
+    "evidence": [
+      "ev-001",
+      "ev-002",
+      "ev-003"
+    ],
+    "escalate": false,
+    "next_steps": []
+  },
+  "evidence": [
+    {
+      "id": "ev-001",
+      "tool": "service_overview",
+      "args": {
+        "window": "3m"
+      },
+      "summary": "[{\"service\": \"load-generator\", \"rps\": 1.447, \"error_pct\": 4.2, \"p95_ms\": 7375.0, \"base_rps\": 2.08, \"base_p95_ms\": 3836.0}, {\"service\": \"frontend\", \"rps\": 22.742, \"error_pct\": 0.0, \"p95_ms\": 395.1, \"base_rps\": 27.89, \"base_p95_ms\": 36.7}, {\"service\": \"product-catalog\", \"rps\": 8.313, \"error_pct\": 0.0, \"p95_ms\": 351.1, \"base_rps\": 10.723, \"base_p95_ms\": 16.1}, {\"service\": \"recommendation\", \"rps\": 2.136, \"error_pct\": 0.0, \"p95_ms\": 295.7, \"base_rps\": 2.686, \"base_p95_ms\": 6.0}, {\"service\": \"frontend-proxy\", \"rps\": 24.724, \"error_pct\": 0.0, \"p95_ms\": 292.6, \"base_rps\": 32.388, \"base_p95_ms\": 33.5},…"
+    },
+    {
+      "id": "ev-002",
+      "tool": "container_health",
+      "args": {
+        "name": "product-catalog"
+      },
+      "summary": "{\"containers\": [{\"name\": \"product-catalog\", \"state\": \"running\", \"health\": \"healthy\", \"restarts\": 0, \"exit_code\": 0, \"oom_killed\": false, \"started_at\": \"2026-10-24T05:03:44\", \"cpu_pct\": 3.06, \"mem\": \"31.43MiB / 64MiB\", \"mem_pct\": 49.11, \"cpu_limit\": 0.05, \"problems\": [\"cpu limited to 0.05 cores\"]}]}"
+    },
+    {
+      "id": "ev-003",
+      "tool": "container_health",
+      "args": {
+        "name": ""
+      },
+      "summary": "{\"with_problems\": [{\"name\": \"product-catalog\", \"state\": \"running\", \"health\": \"healthy\", \"restarts\": 0, \"exit_code\": 0, \"oom_killed\": false, \"started_at\": \"2026-10-24T05:03:44\", \"cpu_pct\": 0.01, \"mem\": \"31.52MiB / 64MiB\", \"mem_pct\": 49.24, \"cpu_limit\": 0.05, \"problems\": [\"cpu limited to 0.05 cores\"]}], \"healthy\": [\"ad\", \"astronomy-db\", \"cart\", \"checkout\", \"currency\", \"email\", \"flagd\", \"frontend\", \"frontend-proxy\", \"image-provider\", \"jaeger\", \"load-generator\", \"opamp-server\", \"opensearch\", \"otel-collector\", \"payment\", \"prometheus\", \"quote\", \"recommendation\", \"shipping\", \"valkey-cart\"]}"
+    }
+  ],
+  "proposed_action": {
+    "action": "remove_cpu_limit",
+    "target": "product-catalog",
+    "params": {},
+    "reason": "product-catalog container shows: cpu limited to 0.05 cores. It is starved of CPU; lifting the limit lets it serve again."
+  },
+  "approval": {
+    "decision": "approved",
+    "by": "ai assistant",
+    "at": "2026-10-24T08:58:51.151616Z"
+  },
+  "execution": {
+    "executed": false,
+    "dry_run": true,
+    "action_id": "act-efe835fd",
+    "result": "would remove the CPU limit of 0.05 cores from product-catalog",
+    "at": "2026-10-24T08:58:51.446792Z"
+  },
+  "verification": null,
+  "timeline": [
+    {
+      "at": "2026-10-24T08:56:40.178964Z",
+      "event": "Alert: product-catalog: container cpu limited to 0.05 cores"
+    },
+    {
+      "at": "2026-10-24T08:58:35.821766Z",
+      "event": "Diagnosis: product-catalog — infrastructure (confidence 1.00)"
+    },
+    {
+      "at": "2026-10-24T08:58:35.822091Z",
+      "event": "Proposed: remove_cpu_limit on product-catalog. product-catalog container shows: cpu limited to 0.05 cores. It is starved of CPU; lifting the limit lets it serve again."
+    },
+    {
+      "at": "2026-10-24T08:58:51.151673Z",
+      "event": "Approved by ai assistant"
+    },
+    {
+      "at": "2026-10-24T08:58:51.446932Z",
+      "event": "Action dry_run: would remove the CPU limit of 0.05 cores from product-catalog"
+    }
+  ],
+  "prevention": [
+    "Find out who set the CPU limit and why; record limits in the Compose file, not by hand",
+    "Alert on CPU limits below what the service needs at normal load"
+  ]
+}
