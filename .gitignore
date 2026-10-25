@@ -11,6 +11,8 @@ __pycache__/
 # Runtime state
 .killswitch
 runs/
+reports/*
+!reports/.gitkeep
 
 # Editors / OS
 .vscode/
